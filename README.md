@@ -73,7 +73,7 @@ Clone the plugin into the Domoticz plugin directory:
 
 ```bash
 cd domoticz/plugins
-git clone https://github.com/MadPatrick/domoticz_somfy
+git clone https://github.com/MadPatrick/domoticz_somfy somfy
 sudo systemctl restart domoticz
 ```
 

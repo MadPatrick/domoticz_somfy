@@ -2,13 +2,13 @@
 # Tahoma/Connexoon IO blind plugin
 #
 # Author: Nonolk, 2019-2020
-# FirstFree function courtesy of @moroen https://github.com/moroen/IKEA-Tradfri-plugin
+# 
 # All credits for the plugin are for Nonolk, who is the origin plugin creator
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="4.2.16" externallink="https://github.com/MadPatrick/somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="4.4.0" externallink="https://github.com/MadPatrick/somfy">
     <description>
 	<br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
-        version: 4.2.16
+        version: 4.4.0
         <br/>This plugin connects to the Tahoma or Connexoon box either via the web API or via local access.
         <br/>Various devices are supported(RollerShutter, LightSensor, Screen, Awning, Window, VenetianBlind, etc.).
         <br/>For new devices, please raise a ticket at the Github link above.
@@ -75,14 +75,8 @@
 </plugin>
 """
 
-try:
-    import DomoticzEx as Domoticz
-except ImportError:
-    #import fake domoticz modules and setup fake domoticz instance to enable unit testing
-    from fakeDomoticz import *
-    from fakeDomoticz import Domoticz
-    Domoticz = Domoticz()
-
+# Tahoma/Connexoon IO blind plugin
+import DomoticzEx as Domoticz
 import json
 import sys
 import logging
@@ -93,6 +87,8 @@ import os
 from tahoma_local import SomfyBox
 import utils
 import requests
+import datetime
+import urllib.request
 
 class BasePlugin:
     def __init__(self):
@@ -119,7 +115,7 @@ class BasePlugin:
             Domoticz.Status("Location {0} does not exist, logging to default location".format(Parameters["Mode5"]))
             log_dir = ""
         log_fullname = os.path.join(log_dir, self.log_filename)
-        Domoticz.Status("Starting Tahoma blind plugin, logging to file {0}".format(log_fullname))
+        Domoticz.Log("Starting Tahoma blind plugin, logging to file {0}".format(log_fullname))
         self.logger = logging.getLogger('root')
         if Parameters["Mode6"] == "Debug":
             Domoticz.Debugging(2)
@@ -129,7 +125,9 @@ class BasePlugin:
             logging.basicConfig(format='%(asctime)s - %(levelname)-8s - %(filename)-18s - %(message)s', filename=log_fullname,level=logging.INFO)
         Domoticz.Debug("os.path.exists(Parameters['Mode5']) = {}".format(os.path.exists(Parameters["Mode5"])))
         logging.info("starting plugin version "+Parameters["Version"])
-        self.runCounter = int(Parameters['Mode2'])
+        self.dayInterval = int(Parameters['Mode2'])
+        self.runCounter = self.dayInterval
+        self.nightInterval = self.dayInterval * 20  # 20 x  mode 2 refresh rate
         Domoticz.Heartbeat(1)
         
         #check upgrading of version needs actions
@@ -292,55 +290,113 @@ class BasePlugin:
         return
 
     def onHeartbeat(self):
-        self.runCounter = self.runCounter - 1
-        if (self.runCounter <= 0 or self.heartbeat) and self.enabled:
-            logging.debug("Poll unit")
-            self.runCounter = int(Parameters['Mode2'])
-            self.heartbeat = False
+        self.runCounter -= 1
 
+        if not self.enabled:
+            return False
+
+        now = datetime.datetime.now()
+        now_minutes = now.hour * 60 + now.minute
+
+        # Default fallback
+        sunrise = 360   # 06:00
+        sunset = 1320   # 22:00
+        sunrise_str = "06:00"
+        sunset_str = "22:00"
+
+        # Probeer sunrise/sunset op te halen via Domoticz JSON API
+        try:
+            with urllib.request.urlopen("http://127.0.0.1:8080/json.htm?type=command&param=getSunRiseSet") as response:
+                data = json.loads(response.read())
+                sunrise_full = data.get("Sunrise", "06:00:00")
+                sunset_full = data.get("Sunset", "22:00:00")
+                sunrise_str = sunrise_full[:5]
+                sunset_str = sunset_full[:5]
+                sr_hour, sr_min = map(int, sunrise_str.split(':'))
+                ss_hour, ss_min = map(int, sunset_str.split(':'))
+                sunrise = sr_hour * 60 + sr_min
+                sunset = ss_hour * 60 + ss_min
+        except Exception as e:
+            Domoticz.Error(f"Failed to get sunrise/sunset from Domoticz JSON, using default: {e}")
+
+        # Bepaal dag/nacht interval
+        if sunrise - 30 <= now_minutes < sunset + 60:
+            interval = self.dayInterval
+        else:
+            interval = self.nightInterval
+
+        # Alleen loggen als sunrise, sunset of interval veranderd
+        if not hasattr(self, 'last_sunrise'):
+            self.last_sunrise = None
+        if not hasattr(self, 'last_sunset'):
+            self.last_sunset = None
+        if not hasattr(self, 'last_interval'):
+            self.last_interval = None
+
+        changed = False
+        if self.last_sunrise != sunrise_str or self.last_sunset != sunset_str:
+            changed = True
+            self.last_sunrise = sunrise_str
+            self.last_sunset = sunset_str
+
+        if self.last_interval != interval:
+            changed = True
+            self.last_interval = interval
+
+        # Eerste run altijd loggen
+        if not hasattr(self, 'last_logged'):
+            self.last_logged = False
+
+        if not self.last_logged:
+            changed = True
+            self.last_logged = True
+
+        if changed:
+            Domoticz.Log(f"Somfy : Time={now.strftime('%H:%M')} sunrise={sunrise_str} sunset={sunset_str}")
+            status = "Day" if interval == self.dayInterval else "Night"
+            Domoticz.Log(f"Somfy: Refresh interval={interval} Seconds ({status})")
+
+        # Poll Somfy box als counter op nul staat of heartbeat trigger actief
+        if self.runCounter <= 0 or self.heartbeat:
             if self.local or (self.tahoma.logged_in and not self.tahoma.startup):
-                # if not self.tahoma.listener.valid:
-                    # self.tahoma.register_listener()
-                event_list = []
                 try:
-                    #event_list = self.tahoma.get_events()
-                    #since events are not 100% watertight, ask for device absolute status
                     filtered_devices = self.tahoma.get_devices()
                     self.update_devices_status(utils.filter_states(filtered_devices))
-                    
-                except (exceptions.TooManyRetries, exceptions.FailureWithErrorCode, exceptions.FailureWithoutErrorCode, json.decoder.JSONDecodeError, requests.exceptions.ConnectionError) as exp:
+                except (exceptions.TooManyRetries, exceptions.FailureWithErrorCode,
+                        exceptions.FailureWithoutErrorCode, json.decoder.JSONDecodeError,
+                        requests.exceptions.ConnectionError) as exp:
                     Domoticz.Error("Failed to request data: " + str(exp))
-                    logging.error("Failed to request data: " + str(exp))
                     return False
                 except exceptions.NoListenerFailure as exp:
                     Domoticz.Error("Failed to request data: " + str(exp))
-                    logging.error("Failed to request data: " + str(exp))
-                    self.tahoma.register_listener() #register a new listener
-                    self.runCounter = 1 #make sure that a new update is done on next heartbeat
+                    self.tahoma.register_listener()
                     return False
-                    
-                if event_list is not None and len(event_list) > 0:
-                    self.update_devices_status(event_list)
-                    self.heartbeat = True
+            elif not self.tahoma.logged_in and not self.local:
+                try:
+                    self.tahoma.tahoma_login(str(Parameters["Username"]), str(Parameters["Password"]))
+                except requests.exceptions.ConnectionError as exp:
+                    Domoticz.Error("Failed to request data: " + str(exp))
+                    return False
 
-            elif not self.tahoma.logged_in:
-                if (not self.local):
-                    #web version: not logged in, so first set up a new login attempt
-                    logging.debug("attempting to poll web version but not logged in")
-                    try:
-                        self.tahoma.tahoma_login(str(Parameters["Username"]), str(Parameters["Password"]))
-                    except (requests.exceptions.ConnectionError) as exp:
-                        Domoticz.Error("Failed to request data: " + str(exp))
-                        logging.error("Failed to request data: " + str(exp))
-                    return False
-                    if self.tahoma.logged_in:
-                        #self.tahoma.register_listener()
-                        self.runCounter = 1 #make sure that a new update is done on next heartbeat
-                # self.con_delay = 0
-            return True
-        elif self.enabled:
-            logging.debug("Polling unit in " + str(self.runCounter) + " heartbeats.")
-            return False
+            # reset runCounter naar juiste interval
+            self.runCounter = interval
+            self.heartbeat = False
+
+        return True
+
+    def getSunRiseSet():
+        try:
+            with urllib.request.urlopen("http://127.0.0.1:8080/json.htm?type=command&param=getSunRiseSet") as response:
+                data = json.loads(response.read().decode())
+                if data.get("status") == "OK":
+                    sunrise = data["Sunrise"][:5]  # HH:MM
+                    sunset = data["Sunset"][:5]
+                    return sunrise, sunset
+        except Exception as e:
+            Domoticz.Error(f"Failed to get sunrise/sunset from Domoticz: {e}")
+
+        # fallback
+        return "06:00", "22:00"
 
     def update_devices_status(self, Updated_devices):
         logging.debug("updating device status self.tahoma.startup = "+str(self.tahoma.startup)+" on num datasets: "+str(len(Updated_devices)))

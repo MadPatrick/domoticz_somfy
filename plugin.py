@@ -68,15 +68,16 @@
 # Tahoma/Connexoon IO blind plugin
 import DomoticzEx as Domoticz
 import json
-import sys
+#import sys
 import logging
 import exceptions
-import time
+#import time
 import tahoma
 import os
 from tahoma_local import SomfyBox
 import utils
 import requests
+import socket
 import datetime
 import urllib.request
 
@@ -265,9 +266,20 @@ class BasePlugin:
         event_list = []
         try:
             self.tahoma.send_command(self.command_data)
-        except (exceptions.TooManyRetries, exceptions.FailureWithErrorCode, exceptions.FailureWithoutErrorCode) as exp:
-            Domoticz.Error("Failed to send command: " + str(exp))
-            logging.error("Failed to send command: " + str(exp))
+        except requests.exceptions.ConnectionError as exp:
+            Domoticz.Error(
+                "Somfy (local): kan geen verbinding maken met gateway. "
+                "Controleer of de Somfy box online is en of mDNS (.local) werkt."
+            )
+            logging.debug("ConnectionError details: %s", exp)
+            return False
+
+        except socket.gaierror as exp:
+            Domoticz.Error(
+                "Somfy (local): hostname kan niet worden opgelost (DNS/mDNS fout). "
+                "Gebruik eventueel een vast IP-adres i.p.v. .local."
+            )
+            logging.debug("DNS resolution failed: %s", exp)
             if not self.local:
                 #clear list of (failed) actions for Connexoon
                 self.actions_serialized = []
@@ -387,8 +399,6 @@ class BasePlugin:
 
         return True
 
-        # fallback
-        return "06:00", "22:00"
 
     def update_devices_status(self, Updated_devices):
         logging.debug("updating device status self.tahoma.startup = "+str(self.tahoma.startup)+" on num datasets: "+str(len(Updated_devices)))

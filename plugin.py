@@ -25,18 +25,8 @@
             <description>==== general configuration ====</description>
         </param>
         <param field="Password" label="Password" width="200px" required="true" default="" password="true"/>
-        <param field="Mode2" label="Refresh interval" width="100px">
-            <options>
-                <option label="1s" value="1"/>
-                <option label="5s" value="5"/>
-                <option label="10s" value="10"/>
-                <option label="20s - local" value="20"/>
-                <option label="1m" value="60"/>
-                <option label="5m - web" value="300" default="true"/>
-                <option label="10m" value="600"/>
-                <option label="15m" value="900"/>
-                <option label="25m" value="1500"/>
-            </options>
+        <param field="Mode2" label="Refresh interval (day,night)" width="100px" default="20,900">
+            <description>Enter two numbers separated by a comma: first for day refresh interval (seconds), second for night refresh interval (seconds)</description>
         </param>
         <param field = "Mode4" label="Connection" width="100px">
             <description>Choose how to interact with the Somfy/Tahoma/Connexoon box:
@@ -109,6 +99,7 @@ class BasePlugin:
         self.runCounter = 0
     
     def onStart(self):
+
         if os.path.exists(Parameters["Mode5"]):
             log_dir = Parameters["Mode5"] 
         else:
@@ -125,9 +116,21 @@ class BasePlugin:
             logging.basicConfig(format='%(asctime)s - %(levelname)-8s - %(filename)-18s - %(message)s', filename=log_fullname,level=logging.INFO)
         Domoticz.Debug("os.path.exists(Parameters['Mode5']) = {}".format(os.path.exists(Parameters["Mode5"])))
         logging.info("starting plugin version "+Parameters["Version"])
-        self.dayInterval = int(Parameters['Mode2'])
+ 
+        # Controleer Mode2 en zet standaard als leeg of ongeldig
+        if not Parameters.get('Mode2') or ',' not in Parameters['Mode2']:
+            Domoticz.Log("Mode2 leeg of ongeldig, instellen op standaard 300,900")
+            Parameters['Mode2'] = "300,900"
+
+        try:
+            day_str, night_str = Parameters['Mode2'].split(',')
+            self.dayInterval = int(day_str.strip())
+            self.nightInterval = int(night_str.strip())
+        except Exception as e:
+            Domoticz.Error("Invalid Mode2 value, using defaults 300,900: " + str(e))
+            self.dayInterval = 300
+            self.nightInterval = 900
         self.runCounter = self.dayInterval
-        self.nightInterval = self.dayInterval * 20  # 20 x  mode 2 refresh rate
         Domoticz.Heartbeat(1)
         
         #check upgrading of version needs actions
@@ -352,9 +355,9 @@ class BasePlugin:
             self.last_logged = True
 
         if changed:
-            Domoticz.Log(f"Somfy : Time={now.strftime('%H:%M')} sunrise={sunrise_str} sunset={sunset_str}")
+            Domoticz.Log(f"Time={now.strftime('%H:%M')} sunrise={sunrise_str} sunset={sunset_str}")
             status = "Day" if interval == self.dayInterval else "Night"
-            Domoticz.Log(f"Somfy: Refresh interval={interval} Seconds ({status})")
+            Domoticz.Log(f"Refresh interval={interval} Seconds ({status})")
 
         # Poll Somfy box als counter op nul staat of heartbeat trigger actief
         if self.runCounter <= 0 or self.heartbeat:
@@ -383,17 +386,6 @@ class BasePlugin:
             self.heartbeat = False
 
         return True
-
-    def getSunRiseSet():
-        try:
-            with urllib.request.urlopen("http://127.0.0.1:8080/json.htm?type=command&param=getSunRiseSet") as response:
-                data = json.loads(response.read().decode())
-                if data.get("status") == "OK":
-                    sunrise = data["Sunrise"][:5]  # HH:MM
-                    sunset = data["Sunset"][:5]
-                    return sunrise, sunset
-        except Exception as e:
-            Domoticz.Error(f"Failed to get sunrise/sunset from Domoticz: {e}")
 
         # fallback
         return "06:00", "22:00"
@@ -682,24 +674,6 @@ def DumpConfigToLog():
     for x in Devices:
         Domoticz.Debug("Device:           " + str(x) + " - " + str(Devices[x]))
     return
-
-def DumpHTTPResponseToLog(httpResp, level=0):
-    if (level==0): Domoticz.Debug("HTTP Details ("+str(len(httpResp))+"):")
-    indentStr = ""
-    for x in range(level):
-        indentStr += "----"
-    if isinstance(httpResp, dict):
-        for x in httpResp:
-            if not isinstance(httpResp[x], dict) and not isinstance(httpResp[x], list):
-                Domoticz.Debug(indentStr + ">'" + x + "':'" + str(httpResp[x]) + "'")
-            else:
-                Domoticz.Debug(indentStr + ">'" + x + "':")
-                DumpHTTPResponseToLog(httpResp[x], level+1)
-    elif isinstance(httpResp, list):
-        for x in httpResp:
-            Domoticz.Debug(indentStr + "['" + x + "']")
-    else:
-        Domoticz.Debug(indentStr + ">'" + x + "':'" + str(httpResp[x]) + "'")
 
 def firstFree():
     """check if there is room to add devices (max 255)"""

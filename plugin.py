@@ -5,12 +5,12 @@
 # 
 # All credits for the plugin are for Nonolk, who is the origin plugin creator
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="4.4.1" externallink="https://github.com/MadPatrick/somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="4.5.0" externallink="https://github.com/MadPatrick/somfy">
     <description>
-	<br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
-        Version: 4.4.1
+        <br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
+        Version: 4.5.0
         <br/>This plugin connects to the Tahoma or Connexoon box either via the web API or via local access.
-        <br/>Various devices are supported(RollerShutter, LightSensor, Screen, Awning, Window, VenetianBlind, etc.).
+        <br/>Various devices are supported (RollerShutter, LightSensor, Screen, Awning, Window, VenetianBlind, etc.).
         <br/>For new devices, please raise a ticket at the Github link above.
         <h2><br/>Configuration</h2><br/>
         The configuration contains the following sections:
@@ -21,46 +21,52 @@
         </ol>
     </description>
     <params>
-        <param field="Username" label="Username" width="200px" required="true" default="">
-        </param>
+        <param field="Username" label="Username" width="200px" required="true" default=""/>
         <param field="Password" label="Password" width="200px" required="true" default="" password="true"/>
-        <param field="Mode2" label="Refresh interval (day,night)" width="100px" default="20;900">
+        <param field="Mode2" label="Refresh interval (day;night)" width="100px" default="20;900">
             <description>
-            <br/>Enter two numbers separated by a ;  
-            <br/>first for day refresh interval (seconds), second for night refresh interval (seconds)</description>
+                <br/>Enter two numbers separated by a ;  
+                <br/>First for day refresh interval (seconds), second for night refresh interval (seconds)
+            </description>
         </param>
-        <param field = "Mode4" label="Connection" width="100px">
-            <description>Choose how to interact with the Somfy/Tahoma/Connexoon box:
-            <br/>Web API: via Somfy web server (requires continues internet access)
-            <br/>Local API: connect directly to the box (default)
-	    <br/><br/>Somfy is depreciating the Web access, so it is better to use the local API</description>
+        <param field="Mode3" label="Night Delay" width="200px" default="30;60">
+            <description>
+                <br/>Delay in minutes before Sunrise and after Sunset for the night refresh interval seperated by ;
+            </description>
+        </param>
+        <param field="Mode4" label="Connection" width="100px">
+            <description>
+                <br/>Choose how to interact with the Somfy/Tahoma/Connexoon box:
+                <br/>Web API: via Somfy web server (requires continuous internet access)
+                <br/>Local API: connect directly to the box (default)
+                <br/><br/>Somfy is depreciating the Web access, so it is better to use the local API
+            </description>
             <options>
                 <option label="Web" value="Web"/>
                 <option label="Local" value="Local" default="true"/>
             </options>
         </param>
-        <param field = "Port" label="Portnumber Tahoma box" width="30px" required="true" default="8443"/>
-        <param field = "Mode3" label = "Gateway pin" width="100px">
+        <param field="Address" label="Gateway PIN" width="150px" required="true" default="1237-2024-7920"/>
+        <param field="Port" label="Portnumber Tahoma box" width="30px" required="true" default="8443"/>
+        <param field="Mode1" label="Reset token" width="100px">
             <description>
-            <br/>The pin of your gateway (eg. 1234-5678-9012) for local access</description>
-        </param>
-        <param field = "Mode1" label="Reset token" width="100px">
-            <description>Set to true to request a new token. Can be used when you get access denied.</description>
+                Set to true to request a new token. Can be used when you get access denied.
+            </description>
             <options>
-                <option label="False" value="False" default="true"/>
-                <option label="True" value="True" />
+                <option label="False" value="False"/>
+                <option label="True" value="True" default="true"/>
             </options>
         </param>
-
-        <param field = "Mode5" label="Log file location" width="200px" default="/var/log/">
+        <param field="Mode5" label="Log file location" width="200px" default="/var/log">
             <description>
-            <br/>Enter a location for the logfile (omit final /), or leave empty to create logfile in the domoticz directory.
-            <br/>Default directory: '/var/log/' for Linux</description>
+                <br/>Enter a location for the logfile (omit final /), or leave empty to create logfile in the domoticz directory.
+                <br/>Default directory: '/var/log' for Linux
+            </description>
         </param>
-        <param field = "Mode6" label="Debug logging" width="100px">
+        <param field="Mode6" label="Debug logging" width="100px">
             <options>
-                <option label="True" value="Debug"/>
-                <option label="False" value="Normal"  default="true" />
+                <option label="True" value="Debug" default="true"/>
+                <option label="False" value="Normal"/>
             </options>
         </param>
     </params>
@@ -96,19 +102,18 @@ class BasePlugin:
         self.actions_serialized = []
         self.logger = None
         self.log_filename = "somfy.log"
-        self.version = ""
         self.local = False
         self.runCounter = 0
     
     def onStart(self):
-
+        Domoticz.Log("Starting plugin version "+Parameters["Version"])
         if os.path.exists(Parameters["Mode5"]):
             log_dir = Parameters["Mode5"] 
         else:
             Domoticz.Status("Location {0} does not exist, logging to default location".format(Parameters["Mode5"]))
             log_dir = ""
         log_fullname = os.path.join(log_dir, self.log_filename)
-        Domoticz.Log("Starting Tahoma blind plugin, logging to file {0}".format(log_fullname))
+        Domoticz.Log("Logging to file {0}".format(log_fullname))
         self.logger = logging.getLogger('root')
         if Parameters["Mode6"] == "Debug":
             Domoticz.Debugging(2)
@@ -117,12 +122,24 @@ class BasePlugin:
         else:
             logging.basicConfig(format='%(asctime)s - %(levelname)-8s - %(filename)-18s - %(message)s', filename=log_fullname,level=logging.INFO)
         Domoticz.Debug("os.path.exists(Parameters['Mode5']) = {}".format(os.path.exists(Parameters["Mode5"])))
-        logging.info("starting plugin version "+Parameters["Version"])
  
         # Controleer Mode2 en zet standaard als leeg of ongeldig
         if not Parameters.get('Mode2') or ';' not in Parameters['Mode2']:
             Domoticz.Log("Mode2 leeg of ongeldig, instellen op standaard 300,900")
             Parameters['Mode2'] = "300,900"
+        # Controleer Mode3 (sunrise;sunset delay)
+        if not Parameters.get('Mode3') or ';' not in Parameters['Mode3']:
+            Domoticz.Log("Mode3 leeg of ongeldig, instellen op standaard 30;60")
+            Parameters['Mode3'] = "30;60"
+
+        try:
+            sr_delay_str, ss_delay_str = Parameters['Mode3'].split(';')
+            self.sunriseDelay = int(sr_delay_str.strip())
+            self.sunsetDelay = int(ss_delay_str.strip())
+        except Exception as e:
+            Domoticz.Error("Invalid Mode3 value, using defaults 30;60: " + str(e))
+            self.sunriseDelay = 30
+            self.sunsetDelay = 60
 
         try:
             day_str, night_str = Parameters['Mode2'].split(';')
@@ -134,14 +151,10 @@ class BasePlugin:
             self.nightInterval = 900
         self.runCounter = self.dayInterval
         Domoticz.Heartbeat(1)
-        
-        #check upgrading of version needs actions
-        self.version = Parameters["Version"]
-        self.enabled = self.checkVersion(self.version)
-        if not self.enabled:
-            return False
 
-        pin = Parameters["Mode3"]
+        self.enabled = True
+
+        pin = Parameters["Address"]
         port = int(Parameters["Port"])
         
         logging.debug("starting to log in with mode " + Parameters["Mode4"])
@@ -325,7 +338,7 @@ class BasePlugin:
             Domoticz.Error(f"Failed to get sunrise/sunset from Domoticz JSON, using default: {e}")
 
         # Bepaal dag/nacht interval
-        if sunrise - 30 <= now_minutes < sunset + 60:
+        if sunrise - self.sunriseDelay <= now_minutes < sunset + self.sunsetDelay:
             interval = self.dayInterval
         else:
             interval = self.nightInterval
@@ -366,7 +379,7 @@ class BasePlugin:
                 ss_hour = int(sunset_str[:2])
                 ss_minute = int(sunset_str[3:])
                 next_switch_dt = now_dt.replace(hour=ss_hour, minute=ss_minute, second=0)
-                next_switch_dt += datetime.timedelta(minutes=60)  # sunset + 60
+                next_switch_dt += datetime.timedelta(minutes=self.sunsetDelay) 
                 if next_switch_dt < now_dt:
                     next_switch_dt += datetime.timedelta(days=1)
             else:  # Night
@@ -374,7 +387,7 @@ class BasePlugin:
                 sr_hour = int(sunrise_str[:2])
                 sr_minute = int(sunrise_str[3:])
                 next_switch_dt = now_dt.replace(hour=sr_hour, minute=sr_minute, second=0)
-                next_switch_dt -= datetime.timedelta(minutes=30)  # sunrise - 30
+                next_switch_dt -= datetime.timedelta(minutes=self.sunriseDelay)
                 if next_switch_dt < now_dt:
                     next_switch_dt += datetime.timedelta(days=1)
 
@@ -480,8 +493,8 @@ class BasePlugin:
                         else:
                             int_level = 0
                         if (level != int_level):
-                            Domoticz.Status("Updating device:"+Devices[dev].Units[status_num].Name)
-                            logging.info("Updating device:"+Devices[dev].Units[status_num].Name)
+                            Domoticz.Status("Updating device : "+Devices[dev].Units[status_num].Name)
+                            logging.info("Updating device : "+Devices[dev].Units[status_num].Name)
                             if (level == 0):
                                 # Devices[dev].Units[status_num].nValue = 0
                                 # Devices[dev].Units[status_num].sValue = "0"
@@ -510,8 +523,8 @@ class BasePlugin:
                         else:
                             int_lumlevel = 0
                         if (lumlevel != int_lumlevel):
-                            Domoticz.Status("Updating device: "+Devices[dev].Units[1].Name)
-                            logging.info("Updating device: "+Devices[dev].Units[1].Name)
+                            Domoticz.Status("Updating device : "+Devices[dev].Units[1].Name)
+                            logging.info("Updating device : "+Devices[dev].Units[1].Name)
                             if (lumlevel != 0 and lumlevel != 120000):
                                 # Devices[dev].Units[1].nValue = 3
                                 # Devices[dev].Units[1].sValue = str(lumlevel)
@@ -531,35 +544,6 @@ class BasePlugin:
 
     def onDeviceRemoved(self, DeviceID, Unit):
         logging.debug("onDeviceRemoved called for DeviceID {0} and Unit {1}".format(DeviceID, Unit))
-
-    def checkVersion(self, version):
-        """checks actual version against stored version as 'Ma.Mi.Pa' and checks if updates needed"""
-        #read version from stored configuration
-        ConfVersion = getConfigItem("plugin version", "0.0.0")
-        Domoticz.Log("Starting version: " + version )
-        logging.info("Starting version: " + version )
-        MaCurrent,MiCurrent,PaCurrent = version.split('.')
-        MaConf,MiConf,PaConf = ConfVersion.split('.')
-        logging.debug("checking versions: current '{0}', config '{1}'".format(version, ConfVersion))
-        can_continue = True
-        if int(MaConf) < int(MaCurrent):
-            Domoticz.Log("Major version upgrade: {0} -> {1}".format(MaConf,MaCurrent))
-            logging.info("Major version upgrade: {0} -> {1}".format(MaConf,MaCurrent))
-            #add code to perform MAJOR upgrades
-            if int(MaConf) < 3:
-                can_continue = self.updateToEx()
-        elif int(MiConf) < int(MiCurrent):
-            Domoticz.Debug("Minor version upgrade: {0} -> {1}".format(MiConf,MiCurrent))
-            logging.debug("Minor version upgrade: {0} -> {1}".format(MiConf,MiCurrent))
-            #add code to perform MINOR upgrades
-        elif int(PaConf) < int(PaCurrent):
-            Domoticz.Debug("Patch version upgrade: {0} -> {1}".format(PaConf,PaCurrent))
-            logging.debug("Patch version upgrade: {0} -> {1}".format(PaConf,PaCurrent))
-            #add code to perform PATCH upgrades, if any
-        if ConfVersion != version and can_continue:
-            #store new version info
-            self._setVersion(MaCurrent,MiCurrent,PaCurrent)
-        return can_continue
 
     def create_devices(self, filtered_devices):
         logging.debug("create_devices: devices found, domoticz: "+str(len(Devices))+" API: "+str(len(filtered_devices)))
@@ -634,24 +618,6 @@ class BasePlugin:
         return len(filtered_devices),created_devices
         #return Devices
 
-    def updateToEx(self):
-        """routine to check if we can update to the Domoticz extended plugin framework"""
-        if len(Devices)>0:
-            Domoticz.Error("Devices are present. Please remove them before upgrading to this version!")
-            Domoticz.Error("Plugin will now exit")
-            return False
-        else:
-            return True
-
-    def _setVersion(self, major, minor, patch):
-        #set configs
-        logging.debug("Setting version to {0}.{1}.{2}".format(major, minor, patch))
-        setConfigItem(Key="MajorVersion", Value=major)
-        setConfigItem(Key="MinorVersion", Value=minor)
-        setConfigItem(Key="patchVersion", Value=patch)
-        setConfigItem(Key="plugin version", Value="{0}.{1}.{2}".format(major, minor, patch))
-
-        
 global _plugin
 _plugin = BasePlugin()
 

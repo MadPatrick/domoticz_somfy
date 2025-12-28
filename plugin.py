@@ -23,6 +23,17 @@
     <params>
         <param field="Username" label="Username" width="200px" required="true" default=""/>
         <param field="Password" label="Password" width="200px" required="true" default="" password="true"/>
+        <param field="Address" label="Gateway PIN" width="150px" required="true" default="1237-2024-7920"/>
+        <param field="Port" label="Portnumber Tahoma box" width="30px" required="true" default="8443"/>
+        <param field="Mode1" label="Reset token" width="100px">
+            <description>
+                Set to true to request a new token. Can be used when you get access denied.
+            </description>
+            <options>
+                <option label="False" value="False"/>
+                <option label="True" value="True" default="true"/>
+            </options>
+        </param>
         <param field="Mode2" label="Refresh interval (day;night)" width="100px" default="20;900">
             <description>
                 <br/>Enter two numbers separated by a ;  
@@ -44,17 +55,6 @@
             <options>
                 <option label="Web" value="Web"/>
                 <option label="Local" value="Local" default="true"/>
-            </options>
-        </param>
-        <param field="Address" label="Gateway PIN" width="150px" required="true" default="1237-2024-7920"/>
-        <param field="Port" label="Portnumber Tahoma box" width="30px" required="true" default="8443"/>
-        <param field="Mode1" label="Reset token" width="100px">
-            <description>
-                Set to true to request a new token. Can be used when you get access denied.
-            </description>
-            <options>
-                <option label="False" value="False"/>
-                <option label="True" value="True" default="true"/>
             </options>
         </param>
         <param field="Mode5" label="Log file location" width="200px" default="/var/log">

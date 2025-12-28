@@ -37,6 +37,10 @@ The plugin will not update otherwise.
 From **version 4.x**, Somfy boxes can be controlled locally.  
 This is faster, more reliable, and avoids Somfy cloud limitations.
 
+### 🌐 Version 4.5 — Parameters changed
+From **version 4.5** the parameters in the config has been changed 
+You need to change your settings in the setup of the plugin
+
 ### ⚠ Somfy Web API Warning
 Somfy discourages Web API usage.  
 Cloud login or Web mode may fail without notice.  

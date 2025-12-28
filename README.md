@@ -81,13 +81,6 @@ git clone https://github.com/MadPatrick/domoticz_somfy somfy
 sudo systemctl restart domoticz
 ```
 
-### 🧪 Optional: Beta Version
-
-```bash
-cd domoticz/plugins/somfy
-git checkout beta
-```
-
 ---
 
 ## ⚙️ Configuration

@@ -23,7 +23,7 @@
     <params>
         <param field="Username" label="Username" width="200px" required="true" default=""/>
         <param field="Password" label="Password" width="200px" required="true" default="" password="true"/>
-        <param field="Address" label="Gateway PIN" width="150px" required="true" default="1237-2024-7920"/>
+        <param field="Address" label="Gateway PIN" width="150px" required="true" default="1234-5678-1234"/>
         <param field="Port" label="Portnumber Tahoma box" width="30px" required="true" default="8443"/>
         <param field="Mode1" label="Reset token" width="100px">
             <description>

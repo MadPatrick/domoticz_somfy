@@ -7,11 +7,7 @@ import time
 import json
 import utils
 import listener
-
-try:
-	import DomoticzEx as Domoticz
-except ImportError:
-	import fakeDomoticz as Domoticz
+import DomoticzEx as Domoticz
 
 import requests.packages.urllib3
 requests.packages.urllib3.disable_warnings()

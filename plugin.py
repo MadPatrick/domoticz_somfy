@@ -5,14 +5,14 @@
 # 
 # All credits for the plugin are for Nonolk, who is the origin plugin creator
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="4.4.0" externallink="https://github.com/MadPatrick/somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="4.4.1" externallink="https://github.com/MadPatrick/somfy">
     <description>
 	<br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
-        version: 4.4.0
+        Version: 4.4.1
         <br/>This plugin connects to the Tahoma or Connexoon box either via the web API or via local access.
         <br/>Various devices are supported(RollerShutter, LightSensor, Screen, Awning, Window, VenetianBlind, etc.).
         <br/>For new devices, please raise a ticket at the Github link above.
-        <h2>Configuration</h2><br/>
+        <h2><br/>Configuration</h2><br/>
         The configuration contains the following sections:
         <ol>
             <li>General: enter here your credentials and select the connection method</li>
@@ -22,11 +22,12 @@
     </description>
     <params>
         <param field="Username" label="Username" width="200px" required="true" default="">
-            <description>==== general configuration ====</description>
         </param>
         <param field="Password" label="Password" width="200px" required="true" default="" password="true"/>
-        <param field="Mode2" label="Refresh interval (day,night)" width="100px" default="20,900">
-            <description>Enter two numbers separated by a comma: first for day refresh interval (seconds), second for night refresh interval (seconds)</description>
+        <param field="Mode2" label="Refresh interval (day,night)" width="100px" default="20;900">
+            <description>
+            <br/>Enter two numbers separated by a ;  
+            <br/>first for day refresh interval (seconds), second for night refresh interval (seconds)</description>
         </param>
         <param field = "Mode4" label="Connection" width="100px">
             <description>Choose how to interact with the Somfy/Tahoma/Connexoon box:
@@ -38,9 +39,10 @@
                 <option label="Local" value="Local" default="true"/>
             </options>
         </param>
-        <param field = "Mode3" label = "Gateway pin" width="200px">
-            <description>==== local configuration ====
-            <br/>The pin of your gateway (eg. 1234-5678-9012)</description>
+        <param field = "Port" label="Portnumber Tahoma box" width="30px" required="true" default="8443"/>
+        <param field = "Mode3" label = "Gateway pin" width="100px">
+            <description>
+            <br/>The pin of your gateway (eg. 1234-5678-9012) for local access</description>
         </param>
         <param field = "Mode1" label="Reset token" width="100px">
             <description>Set to true to request a new token. Can be used when you get access denied.</description>
@@ -49,11 +51,11 @@
                 <option label="True" value="True" />
             </options>
         </param>
-        <param field = "Port" label="Portnumber Tahoma box" width="30px" required="true" default="8443"/>
-        <param field = "Mode5" label="Log file location" width="300px">
-            <description>==== debug configuration ====
+
+        <param field = "Mode5" label="Log file location" width="200px" default="/var/log/">
+            <description>
             <br/>Enter a location for the logfile (omit final /), or leave empty to create logfile in the domoticz directory.
-            <br/>Default directory: '/home/user/domoticz' for raspberry pi</description>
+            <br/>Default directory: '/var/log/' for Linux</description>
         </param>
         <param field = "Mode6" label="Debug logging" width="100px">
             <options>
@@ -118,12 +120,12 @@ class BasePlugin:
         logging.info("starting plugin version "+Parameters["Version"])
  
         # Controleer Mode2 en zet standaard als leeg of ongeldig
-        if not Parameters.get('Mode2') or ',' not in Parameters['Mode2']:
+        if not Parameters.get('Mode2') or ';' not in Parameters['Mode2']:
             Domoticz.Log("Mode2 leeg of ongeldig, instellen op standaard 300,900")
             Parameters['Mode2'] = "300,900"
 
         try:
-            day_str, night_str = Parameters['Mode2'].split(',')
+            day_str, night_str = Parameters['Mode2'].split(';')
             self.dayInterval = int(day_str.strip())
             self.nightInterval = int(night_str.strip())
         except Exception as e:
@@ -357,7 +359,26 @@ class BasePlugin:
         if changed:
             Domoticz.Log(f"Time={now.strftime('%H:%M')} sunrise={sunrise_str} sunset={sunset_str}")
             status = "Day" if interval == self.dayInterval else "Night"
-            Domoticz.Log(f"Refresh interval={interval} Seconds ({status})")
+            now_dt = datetime.datetime.now()
+
+            if status == "Day":
+                # Day eindigt bij sunset + 60 min
+                ss_hour = int(sunset_str[:2])
+                ss_minute = int(sunset_str[3:])
+                next_switch_dt = now_dt.replace(hour=ss_hour, minute=ss_minute, second=0)
+                next_switch_dt += datetime.timedelta(minutes=60)  # sunset + 60
+                if next_switch_dt < now_dt:
+                    next_switch_dt += datetime.timedelta(days=1)
+            else:  # Night
+                # Night eindigt bij sunrise - 30 min
+                sr_hour = int(sunrise_str[:2])
+                sr_minute = int(sunrise_str[3:])
+                next_switch_dt = now_dt.replace(hour=sr_hour, minute=sr_minute, second=0)
+                next_switch_dt -= datetime.timedelta(minutes=30)  # sunrise - 30
+                if next_switch_dt < now_dt:
+                    next_switch_dt += datetime.timedelta(days=1)
+
+            Domoticz.Log(f"Refresh interval={interval} Seconds ({status}) until {next_switch_dt.strftime('%H:%M')}")
 
         # Poll Somfy box als counter op nul staat of heartbeat trigger actief
         if self.runCounter <= 0 or self.heartbeat:
@@ -365,23 +386,38 @@ class BasePlugin:
                 try:
                     filtered_devices = self.tahoma.get_devices()
                     self.update_devices_status(utils.filter_states(filtered_devices))
+
+                    # Reset de "laatste fout-tijd" als het nu wel lukt
+                    if hasattr(self, 'last_connection_error_time'):
+                        del self.last_connection_error_time
+
                 except (exceptions.TooManyRetries, exceptions.FailureWithErrorCode,
                         exceptions.FailureWithoutErrorCode, json.decoder.JSONDecodeError,
                         requests.exceptions.ConnectionError) as exp:
-                    Domoticz.Error("Failed to request data: " + str(exp))
-                    return False
+                    # --- Nettere en duidelijkere foutmelding op meerdere regels ---
+                    now = time.time()
+                    # Log alleen als het langer dan 60 seconden geleden is
+                    if not hasattr(self, 'last_connection_error_time') or (now - self.last_connection_error_time > 60):
+                        Domoticz.Error("Somfy: Unable to connect to the local box")
+                        Domoticz.Error("This can occur during temporary internet or network interruptions")
+                        Domoticz.Error("Next message in 1 minute (silent in between)")
+                        # Optioneel: de technische fout kort weergeven (zonder hele stack)
+                        short_error = str(exp).split('Caused by')[0].strip()
+                        Domoticz.Error(f"   Fout: {short_error}")
+
+                        self.last_connection_error_time = now
+                    # --- Einde melding ---
+                    # Optioneel: stil houden tussendoor
+                    # Domoticz.Debug("Somfy verbinding tijdelijk niet mogelijk (gelogd max 1x per minuut)")
+
                 except exceptions.NoListenerFailure as exp:
                     Domoticz.Error("Failed to request data: " + str(exp))
                     self.tahoma.register_listener()
-                    return False
-            elif not self.tahoma.logged_in and not self.local:
-                try:
-                    self.tahoma.tahoma_login(str(Parameters["Username"]), str(Parameters["Password"]))
-                except requests.exceptions.ConnectionError as exp:
-                    Domoticz.Error("Failed to request data: " + str(exp))
-                    return False
 
-            # reset runCounter naar juiste interval
+                # Geen return False meer hierboven! Alleen bij echte fouten als je wilt stoppen
+                # We gaan gewoon door, ook bij tijdelijke fouten
+
+            # reset runCounter naar juiste interval (altijd, ook als poll mislukt)
             self.runCounter = interval
             self.heartbeat = False
 

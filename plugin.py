@@ -127,10 +127,12 @@ class BasePlugin:
             logging.basicConfig(format='%(asctime)s - %(levelname)-8s - %(filename)-18s - %(message)s', filename=log_fullname,level=logging.INFO)
         Domoticz.Debug("os.path.exists(Parameters['Mode5']) = {}".format(os.path.exists(Parameters["Mode5"])))
         logging.info("starting plugin version "+Parameters["Version"])
+
         # Controleer Mode2 en zet standaard als leeg of ongeldig
         if not Parameters.get('Mode2') or ';' not in Parameters['Mode2']:
             Domoticz.Log("Mode2 leeg of ongeldig, instellen op standaard 300;900")
             Parameters['Mode2'] = "300;900"
+
         # Controleer Mode3 (sunrise;sunset delay)
         if not Parameters.get('Mode3') or ';' not in Parameters['Mode3']:
             Domoticz.Log("Mode3 leeg of ongeldig, instellen op standaard 30;60")
@@ -225,6 +227,7 @@ class BasePlugin:
     def onStop(self):
         logging.info("stopping plugin")
         self.heartbeat = False
+
     def onConnect(self, Connection, Status, Description):
         logging.debug("onConnect: Connection: '"+str(Connection)+"', Status: '"+str(Status)+"', Description: '"+str(Description)+"' self.tahoma.logged_in: '"+str(self.tahoma.logged_in)+"'")
         if (Status == 0 and not self.tahoma.logged_in):
@@ -240,9 +243,11 @@ class BasePlugin:
           self.actions_serialized = []
         else:
           logging.info("Failed to connect to tahoma api")
+
     def onMessage(self, Connection, Data):
         Domoticz.Error("onMessage called but not implemented")
         Domoticz.Debug("onMessage data: "+str(Data))
+
     def onCommand(self, DeviceId, Unit, Command, Level, Hue):
         logging.debug("onCommand: DeviceId: '"+str(DeviceId)+"' Unit: '"+str(Unit)+"', Command: '"+str(Command)+"', Level: '"+str(Level)+"', Hue: '"+str(Hue)+"'")
         commands_serialized = []
@@ -429,33 +434,56 @@ class BasePlugin:
         for dataset in eventList:
             #logging.debug("checking dataset for URL: "+str(dataset['deviceURL']))
             logging.debug("checking dataset: "+str(dataset))
+
             if dataset["deviceURL"] not in Devices:
                 Domoticz.Error("device not found for URL: "+str(dataset["deviceURL"]))
                 logging.error("device not found for URL: "+str(dataset["deviceURL"])+" while updating states")
                 continue #no deviceURL found that matches to domoticz Devices, skip to next dataset
+
+            if (dataset["name"] == "DeviceStateChangedEvent"):
+
+                continue #dataset does not contain correct event, skip to next dataset
+
             if (dataset["deviceURL"].startswith("io://")):
                 dev = dataset["deviceURL"]
+                
+                # REPARATIE: Gebruik .get() om een KeyError te voorkomen
+                deviceClassTrig = dataset.get("deviceClass", "Unknown") 
+                
+                # Optioneel: Als deviceClass ontbreekt, probeer het uit de bestaande Domoticz device definitie te halen
+                if deviceClassTrig == "Unknown" and dev in Devices:
+                     # We laten het hier op "Unknown" of je kunt proberen 
+                     # het op te zoeken in een eerdere scan.
+                     pass                
                 level = 0
                 status_num = 0
                 status = None
                 nValue = 0
                 sValue = "0"
+
                 states = dataset["deviceStates"]
                 if not (dataset["name"] == "DeviceStateChangedEvent" or dataset["name"] == "DeviceState"):
                     logging.debug("update_devices_status: dataset['name'] != DeviceStateChangedEvent: "+str(dataset["name"])+": breaking out")
                     continue #dataset does not contain correct event, skip to next dataset
+
                 for state in states:
                     status_num = 0
                     lumstatus_l = False
+
                     if ((state["name"] == "core:ClosureState") or (state["name"] == "core:DeploymentState")):
-                        level = int(state["value"])
-                        level = 100 - level #invert open/close percentage
-                        status_num = 1
+                        if (deviceClassTrig == "Awning"):
+                            level = int(state["value"]) #Don't invert open/close percentage for an Awning
+                            status_num = 1
+                        else:
+                            level = int(state["value"])
+                            level = 100 - level #invert open/close percentage
+                            status_num = 1
                      
                     if ((state["name"] == "core:SlateOrientationState")):
                         level = int(state["value"])
                         #level = 100 - level
                         status_num = 2
+
                     if (state["name"] == "core:LuminanceState"):
                         lumlevel = state["value"]
                         lumstatus_l = True
@@ -500,20 +528,21 @@ class BasePlugin:
                             Domoticz.Status("Updating device : "+Devices[dev].Units[1].Name)
                             logging.info("Updating device : "+Devices[dev].Units[1].Name)
                             if (lumlevel != 0 and lumlevel != 120000):
-                                # Devices[dev].Units[1].nValue = 3
-                                # Devices[dev].Units[1].sValue = str(lumlevel)
-                                # Devices[dev].Units[1].Update()
                                 nValue = 3
                                 sValue = str(lumlevel)
                                 UpdateDevice(dev, 1, nValue,sValue)
                     num_updates += 1
         return num_updates
+
     def onDeviceAdded(self, DeviceID, Unit):
         logging.debug("onDeviceAdded called for DeviceID {0} and Unit {1}".format(DeviceID, Unit))
+
     def onDeviceModified(self, DeviceID, Unit):
         logging.debug("onDeviceModified called for DeviceID {0} and Unit {1}".format(DeviceID, Unit))
+
     def onDeviceRemoved(self, DeviceID, Unit):
         logging.debug("onDeviceRemoved called for DeviceID {0} and Unit {1}".format(DeviceID, Unit))
+
     def checkVersion(self, version):
         """checks actual version against stored version as 'Ma.Mi.Pa' and checks if updates needed"""
         #read version from stored configuration
@@ -542,6 +571,7 @@ class BasePlugin:
             #store new version info
             self._setVersion(MaCurrent,MiCurrent,PaCurrent)
         return can_continue
+
     def create_devices(self, filtered_devices):
         logging.debug("create_devices: devices found, domoticz: "+str(len(Devices))+" API: "+str(len(filtered_devices)))
         created_devices = 0
@@ -568,6 +598,7 @@ class BasePlugin:
                     #DeviceID not found, create new one
                     swtype = None
                     logging.debug("create_devices: Must create new device: "+device["label"])
+
                     if (device["deviceURL"].startswith("io://") or (device["deviceURL"].startswith("rts://"))):
                         deviceType = 244
                         swtype = 13
@@ -583,11 +614,6 @@ class BasePlugin:
                             deviceType = 246
                             swtype = 12
                             subtype2 = 1
-                    # elif (device["deviceURL"].startswith("rts://")):
-                        # deviceType = 244
-                        # subtype2 = 73
-                        # used = 1 # 1 = True
-                        # swtype = 6 # -> switch type 6 no longer supported
                     elif (device["definition"]["uiClass"] == "Pod"):
                         deviceType = 244
                         subtype2 = 73
@@ -608,8 +634,11 @@ class BasePlugin:
                 else:
                     found = False
         logging.debug("create_devices: finished create devices")
+
         return len(filtered_devices),created_devices
+
         #return Devices
+
     def updateToEx(self):
         """routine to check if we can update to the Domoticz extended plugin framework"""
         if len(Devices)>0:
@@ -618,6 +647,7 @@ class BasePlugin:
             return False
         else:
             return True
+
     def _setVersion(self, major, minor, patch):
         #set configs
         logging.debug("Setting version to {0}.{1}.{2}".format(major, minor, patch))

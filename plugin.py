@@ -448,6 +448,7 @@ class BasePlugin:
                 continue #no deviceURL found that matches to domoticz Devices, skip to next dataset
             if (dataset["deviceURL"].startswith("io://")):
                 dev = dataset["deviceURL"]
+                deviceClassTrig = dataset["deviceClass"] 
                 level = 0
                 status_num = 0
                 status = None

@@ -165,6 +165,12 @@ class BasePlugin:
 
         self.enabled = True
 
+        #check upgrading of version needs actions
+        self.version = Parameters["Version"]
+        self.enabled = self.checkVersion(self.version)
+        if not self.enabled:
+            return False
+
         pin = Parameters["Address"]
         port = int(Parameters["Port"])
        
@@ -544,6 +550,35 @@ class BasePlugin:
     def onDeviceRemoved(self, DeviceID, Unit):
         logging.debug("onDeviceRemoved called for DeviceID {0} and Unit {1}".format(DeviceID, Unit))
 
+    def checkVersion(self, version):
+        """checks actual version against stored version as 'Ma.Mi.Pa' and checks if updates needed"""
+        #read version from stored configuration
+        ConfVersion = getConfigItem("plugin version", "0.0.0")
+        Domoticz.Log("Starting version: " + version )
+        logging.info("Starting version: " + version )
+        MaCurrent,MiCurrent,PaCurrent = version.split('.')
+        MaConf,MiConf,PaConf = ConfVersion.split('.')
+        logging.debug("checking versions: current '{0}', config '{1}'".format(version, ConfVersion))
+        can_continue = True
+        if int(MaConf) < int(MaCurrent):
+            Domoticz.Log("Major version upgrade: {0} -> {1}".format(MaConf,MaCurrent))
+            logging.info("Major version upgrade: {0} -> {1}".format(MaConf,MaCurrent))
+            #add code to perform MAJOR upgrades
+            if int(MaConf) < 3:
+                can_continue = self.updateToEx()
+        elif int(MiConf) < int(MiCurrent):
+            Domoticz.Debug("Minor version upgrade: {0} -> {1}".format(MiConf,MiCurrent))
+            logging.debug("Minor version upgrade: {0} -> {1}".format(MiConf,MiCurrent))
+            #add code to perform MINOR upgrades
+        elif int(PaConf) < int(PaCurrent):
+            Domoticz.Debug("Patch version upgrade: {0} -> {1}".format(PaConf,PaCurrent))
+            logging.debug("Patch version upgrade: {0} -> {1}".format(PaConf,PaCurrent))
+            #add code to perform PATCH upgrades, if any
+        if ConfVersion != version and can_continue:
+            #store new version info
+            self._setVersion(MaCurrent,MiCurrent,PaCurrent)
+        return can_continue
+
     def create_devices(self, filtered_devices):
         logging.debug("create_devices: devices found, domoticz: "+str(len(Devices))+" API: "+str(len(filtered_devices)))
         created_devices = 0
@@ -610,6 +645,23 @@ class BasePlugin:
         return len(filtered_devices),created_devices
 
         #return Devices
+
+    def updateToEx(self):
+        """routine to check if we can update to the Domoticz extended plugin framework"""
+        if len(Devices)>0:
+            Domoticz.Error("Devices are present. Please remove them before upgrading to this version!")
+            Domoticz.Error("Plugin will now exit")
+            return False
+        else:
+            return True
+
+    def _setVersion(self, major, minor, patch):
+        #set configs
+        logging.debug("Setting version to {0}.{1}.{2}".format(major, minor, patch))
+        setConfigItem(Key="MajorVersion", Value=major)
+        setConfigItem(Key="MinorVersion", Value=minor)
+        setConfigItem(Key="patchVersion", Value=patch)
+        setConfigItem(Key="plugin version", Value="{0}.{1}.{2}".format(major, minor, patch))
 
     def updateToEx(self):
         """routine to check if we can update to the Domoticz extended plugin framework"""

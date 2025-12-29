@@ -1,4 +1,7 @@
 # Tahoma/Connexoon IO blind plugin
+#
+# Author: Nonolk, 2019-2020
+#
 # All credits for the plugin are for Nonolk, who is the origin plugin creator
 """
 <plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.0.0" externallink="https://github.com/MadPatrick/somfy">
@@ -92,6 +95,7 @@ class BasePlugin:
         # Defaults for external config===
         self.domoticz_host = "127.0.0.1"
         self.domoticz_port = "8080"
+        self.last_daily_refresh = None
         self.last_sunrise = None
         self.last_sunset = None
         self.last_sunrise_date = None
@@ -220,6 +224,64 @@ class BasePlugin:
         else:
           logging.info("Failed to connect to tahoma api")
 
+    def refresh_daily_data(self):
+        today = datetime.date.today()
+
+        # Check of we vandaag al ververst hebben
+        if self.last_daily_refresh == today:
+            return
+
+        # === 1. Config opnieuw inlezen ===
+        config_path = os.path.join(os.path.dirname(__file__), "config.txt")
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, "r") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line or line.startswith("#") or "=" not in line:
+                            continue
+
+                        key, value = line.split("=", 1)
+                        key = key.strip().upper()
+                        value = value.strip()
+
+                        if key == "DOMOTICZ_HOST":
+                            self.domoticz_host = value
+                        elif key == "DOMOTICZ_PORT":
+                            self.domoticz_port = value
+                        elif key == "REFRESH_DAY":
+                            self.dayInterval = int(value)
+                        elif key == "REFRESH_NIGHT":
+                            self.nightInterval = int(value)
+                        elif key == "SUNRISE_DELAY":
+                            self.sunriseDelay = int(value)
+                        elif key == "SUNSET_DELAY":
+                            self.sunsetDelay = int(value)
+                logging.debug(f"config.txt reloaded: {today}")
+            except Exception as e:
+                Domoticz.Error(f"Error with reloading config.txt: {e}")
+
+        # === 2. Sunrise/sunset ophalen ===
+        try:
+            api_url = f"http://{self.domoticz_host}:{self.domoticz_port}/json.htm?type=command&param=getSunRiseSet"
+            with urllib.request.urlopen(api_url, timeout=10) as response:
+                data = json.loads(response.read().decode('utf-8'))
+                sunrise_full = data.get("Sunrise", "06:00:00")
+                sunset_full = data.get("Sunset", "22:00:00")
+                self.last_sunrise = sunrise_full[:5]
+                self.last_sunset = sunset_full[:5]
+            logging.debug(f"Sunrise/sunset ververst: {self.last_sunrise} / {self.last_sunset}")
+        except Exception as e:
+            Domoticz.Error(f"sunrise/sunset couldn't be loaded: {e}")
+            if not self.last_sunrise:
+                self.last_sunrise = "06:00"
+            if not self.last_sunset:
+                self.last_sunset = "22:00"
+
+        # Markeer de dag als ververst
+        self.last_daily_refresh = today
+        Domoticz.Log(f"Daily refresh: sunrise={self.last_sunrise}, sunset={self.last_sunset}")
+
     def onMessage(self, Connection, Data):
         Domoticz.Error("onMessage called but not implemented")
         Domoticz.Debug("onMessage data: "+str(Data))
@@ -317,26 +379,7 @@ class BasePlugin:
         now_minutes = now.hour * 60 + now.minute
         today = datetime.date.today()
 
-        # === get sunrise/sunset 1x per dag ===
-        if self.last_sunrise_date != today or self.last_sunset_date != today:
-            api_url = f"http://{self.domoticz_host}:{self.domoticz_port}/json.htm?type=command&param=getSunRiseSet"
-            try:
-                with urllib.request.urlopen(api_url, timeout=10) as response:
-                    data = json.loads(response.read().decode('utf-8'))
-                    sunrise_full = data.get("Sunrise", "06:00:00")
-                    sunset_full = data.get("Sunset", "22:00:00")
-                    self.last_sunrise = sunrise_full[:5]
-                    self.last_sunset = sunset_full[:5]
-                    self.last_sunrise_date = today
-                    self.last_sunset_date = today
-                Domoticz.Debug(f"Sunrise/sunset recieved from {api_url} (sunrise: {self.last_sunrise}, sunset: {self.last_sunset})")
-                logging.debug(f"Sunrise/sunset van {api_url}: {self.last_sunrise} / {self.last_sunset}")
-            except Exception as e:
-                Domoticz.Error(f"Kon sunrise/sunset niet ophalen van {api_url}. Gebruik fallback tijden (06:00/22:00). Fout: {e}")
-                if not self.last_sunrise:
-                    self.last_sunrise = "06:00"
-                if not self.last_sunset:
-                    self.last_sunset = "22:00"
+        self.refresh_daily_data()
 
         # Convert to minutes
         sr_hour, sr_min = map(int, self.last_sunrise.split(':'))

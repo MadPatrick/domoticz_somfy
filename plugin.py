@@ -1,7 +1,4 @@
 # Tahoma/Connexoon IO blind plugin
-#
-# Author: Nonolk, 2019-2020
-#
 # All credits for the plugin are for Nonolk, who is the origin plugin creator
 """
 <plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.0.0" externallink="https://github.com/MadPatrick/somfy">
@@ -18,21 +15,11 @@
             <li>Local: when connection method local is selected, fill this section as well</li>
             <li>Debug: allows to set log level and specify log file location</li>
         </ol>
+        <br/><font color="yellow">Please put in the additional parameters in the config.txt file in the plugin folder</font><br/>
     </description>
     <params>
         <param field="Username" label="Username" width="200px" required="true" default=""/>
         <param field="Password" label="Password" width="200px" required="true" default="" password="true"/>
-        <param field="Mode2" label="Refresh interval (day;night)" width="100px" default="20;900">
-            <description>
-                <br/>Enter two numbers separated by a ;
-                <br/>First for day refresh interval (seconds), second for night refresh interval (seconds)
-            </description>
-        </param>
-        <param field="Mode3" label="Night Delay" width="200px" default="30;60">
-            <description>
-                <br/>Delay for Sunrise and Sunset
-            </description>
-        </param>
         <param field="Mode4" label="Connection" width="100px">
             <description>
                 <br/>Choose how to interact with the Somfy/Tahoma/Connexoon box:
@@ -128,57 +115,50 @@ class BasePlugin:
         Domoticz.Debug("os.path.exists(Parameters['Mode5']) = {}".format(os.path.exists(Parameters["Mode5"])))
         logging.info("starting plugin version "+Parameters["Version"])
 
-        # Check Mode2 en put in default if empty
-        if not Parameters.get('Mode2') or ';' not in Parameters['Mode2']:
-            Domoticz.Log("Mode2 Empty of invalid, set to default value 300;900")
-            Parameters['Mode2'] = "300;900"
+        # === Defaults voor refresh & sunrise/sunset ===
+        self.dayInterval = 300
+        self.nightInterval = 900
+        self.sunriseDelay = 30
+        self.sunsetDelay = 60
 
-        # Controleer Mode3 (sunrise;sunset delay)
-        if not Parameters.get('Mode3') or ';' not in Parameters['Mode3']:
-            Domoticz.Log("Mode3 lEmpty of invalid, set to default value 30;60")
-            Parameters['Mode3'] = "30;60"
-        try:
-            sr_delay_str, ss_delay_str = Parameters['Mode3'].split(';')
-            self.sunriseDelay = int(sr_delay_str.strip())
-            self.sunsetDelay = int(ss_delay_str.strip())
-        except Exception as e:
-            Domoticz.Error("Invalid Mode3 value, using defaults 30;60: " + str(e))
-            self.sunriseDelay = 30
-            self.sunsetDelay = 60
-        try:
-            day_str, night_str = Parameters['Mode2'].split(';')
-            self.dayInterval = int(day_str.strip())
-            self.nightInterval = int(night_str.strip())
-        except Exception as e:
-            Domoticz.Error("Invalid Mode2 value, using defaults 300,900: " + str(e))
-            self.dayInterval = 300
-            self.nightInterval = 900
-        self.runCounter = self.dayInterval
-        Domoticz.Heartbeat(1)
-       
-        # Read config.txt ===
+        # === Read config.txt ===
         config_path = os.path.join(os.path.dirname(__file__), "config.txt")
         if os.path.exists(config_path):
             try:
                 with open(config_path, "r") as f:
                     for line in f:
                         line = line.strip()
-                        if line and not line.startswith("#") and "=" in line:
-                            key, value = line.split("=", 1)
-                            key = key.strip().upper()
-                            value = value.strip()
-                            if key == "DOMOTICZ_HOST":
-                                self.domoticz_host = value
-                            elif key == "DOMOTICZ_PORT":
-                                self.domoticz_port = value
-                Domoticz.Log(f"config.txt loaded: DOMOTICZ_HOST={self.domoticz_host}, DOMOTICZ_PORT={self.domoticz_port}")
-                logging.info(f"config.txt loaded: DOMOTICZ_HOST={self.domoticz_host}, DOMOTICZ_PORT={self.domoticz_port}")
+                        if not line or line.startswith("#") or "=" not in line:
+                            continue
+
+                        key, value = line.split("=", 1)
+                        key = key.strip().upper()
+                        value = value.strip()
+
+                        if key == "DOMOTICZ_HOST":
+                            self.domoticz_host = value
+                        elif key == "DOMOTICZ_PORT":
+                            self.domoticz_port = value
+                        elif key == "REFRESH_DAY":
+                            self.dayInterval = int(value)
+                        elif key == "REFRESH_NIGHT":
+                            self.nightInterval = int(value)
+                        elif key == "SUNRISE_DELAY":
+                            self.sunriseDelay = int(value)
+                        elif key == "SUNSET_DELAY":
+                            self.sunsetDelay = int(value)
+
+                Domoticz.Log(
+                    f"config.txt loaded: "
+                    f"host={self.domoticz_host}:{self.domoticz_port}, "
+                    f"day={self.dayInterval}s, night={self.nightInterval}s, "
+                    f"sunriseDelay={self.sunriseDelay}m, sunsetDelay={self.sunsetDelay}m"
+                )
             except Exception as e:
-                Domoticz.Error(f"Error with reading config.txt: {e}. Using defaults: {self.domoticz_host}:{self.domoticz_port}")
-                logging.error(f"Error with reading config.txt: {e}")
+                Domoticz.Error(f"Error reading config.txt, using defaults: {e}")
         else:
-            Domoticz.Status("config.txt not found in folder. Using defaults: 127.0.0.1:8080 for sunrise/sunset API")
-            logging.warning("config.txt  not found, Using defaults")
+            Domoticz.Status("config.txt not found, using default refresh & delay values")
+
         self.enabled = True
 
         pin = Parameters["Address"]
@@ -349,7 +329,7 @@ class BasePlugin:
                     self.last_sunset = sunset_full[:5]
                     self.last_sunrise_date = today
                     self.last_sunset_date = today
-                Domoticz.Debug(f"Sunrise/sunset opgehaald van {api_url} (sunrise: {self.last_sunrise}, sunset: {self.last_sunset})")
+                Domoticz.Debug(f"Sunrise/sunset recieved from {api_url} (sunrise: {self.last_sunrise}, sunset: {self.last_sunset})")
                 logging.debug(f"Sunrise/sunset van {api_url}: {self.last_sunrise} / {self.last_sunset}")
             except Exception as e:
                 Domoticz.Error(f"Kon sunrise/sunset niet ophalen van {api_url}. Gebruik fallback tijden (06:00/22:00). Fout: {e}")

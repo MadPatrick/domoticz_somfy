@@ -102,7 +102,7 @@ class BasePlugin:
         self.version = ""
         self.local = False
         self.runCounter = 0
-        # === NIEUW: Defaults voor externe Domoticz ===
+        # Defaults for external config===
         self.domoticz_host = "127.0.0.1"
         self.domoticz_port = "8080"
         self.last_sunrise = None
@@ -128,14 +128,14 @@ class BasePlugin:
         Domoticz.Debug("os.path.exists(Parameters['Mode5']) = {}".format(os.path.exists(Parameters["Mode5"])))
         logging.info("starting plugin version "+Parameters["Version"])
 
-        # Controleer Mode2 en zet standaard als leeg of ongeldig
+        # Check Mode2 en put in default if empty
         if not Parameters.get('Mode2') or ';' not in Parameters['Mode2']:
-            Domoticz.Log("Mode2 leeg of ongeldig, instellen op standaard 300;900")
+            Domoticz.Log("Mode2 Empty of invalid, set to default value 300;900")
             Parameters['Mode2'] = "300;900"
 
         # Controleer Mode3 (sunrise;sunset delay)
         if not Parameters.get('Mode3') or ';' not in Parameters['Mode3']:
-            Domoticz.Log("Mode3 leeg of ongeldig, instellen op standaard 30;60")
+            Domoticz.Log("Mode3 lEmpty of invalid, set to default value 30;60")
             Parameters['Mode3'] = "30;60"
         try:
             sr_delay_str, ss_delay_str = Parameters['Mode3'].split(';')
@@ -156,7 +156,7 @@ class BasePlugin:
         self.runCounter = self.dayInterval
         Domoticz.Heartbeat(1)
        
-        # === NIEUW: config.txt inlezen voor externe Domoticz ===
+        # Read config.txt ===
         config_path = os.path.join(os.path.dirname(__file__), "config.txt")
         if os.path.exists(config_path):
             try:
@@ -341,7 +341,7 @@ class BasePlugin:
         now_minutes = now.hour * 60 + now.minute
         today = datetime.date.today()
 
-        # === Ophalen van sunrise/sunset slechts 1 keer per dag ===
+        # === get sunrise/sunset 1x per dag ===
         if self.last_sunrise_date != today or self.last_sunset_date != today:
             api_url = f"http://{self.domoticz_host}:{self.domoticz_port}/json.htm?type=command&param=getSunRiseSet"
             try:
@@ -362,13 +362,13 @@ class BasePlugin:
                 if not self.last_sunset:
                     self.last_sunset = "22:00"
 
-        # Converteer naar minuten
+        # Convert to minutes
         sr_hour, sr_min = map(int, self.last_sunrise.split(':'))
         ss_hour, ss_min = map(int, self.last_sunset.split(':'))
         sunrise = sr_hour * 60 + sr_min
         sunset = ss_hour * 60 + ss_min
 
-        # Bepaal dag/nacht interval
+        # set day/night interval
         if sunrise - self.sunriseDelay <= now_minutes < sunset + self.sunsetDelay:
             interval = self.dayInterval
             status = "Day"
@@ -381,7 +381,7 @@ class BasePlugin:
         if next_switch_dt < now:
             next_switch_dt += datetime.timedelta(days=1)
 
-        # Log alleen als sunrise, sunset of interval veranderd
+        # Log only if sunrise, sunset or interval changed
         changed = False
         if getattr(self, 'last_logged_sunrise', None) != self.last_sunrise or getattr(self, 'last_logged_sunset', None) != self.last_sunset:
             changed = True
@@ -395,7 +395,7 @@ class BasePlugin:
             Domoticz.Log(f"Time={now.strftime('%H:%M')} sunrise={self.last_sunrise} sunset={self.last_sunset}")
             Domoticz.Log(f"Refresh interval={interval} Seconds ({status}) until {next_switch_dt.strftime('%H:%M')}")
 
-        # Poll Somfy box als counter op nul staat of heartbeat trigger actief
+        # Poll Somfy box if counter is 0 or heartbeat trigger active
         if self.runCounter <= 0 or self.heartbeat:
             if self.local or (self.tahoma.logged_in and not getattr(self.tahoma, 'startup', False)):
                 try:
@@ -447,13 +447,11 @@ class BasePlugin:
             if (dataset["deviceURL"].startswith("io://")):
                 dev = dataset["deviceURL"]
                 
-                # REPARATIE: Gebruik .get() om een KeyError te voorkomen
+                # Use .get() to avoid KeyError
                 deviceClassTrig = dataset.get("deviceClass", "Unknown") 
                 
                 # Optioneel: Als deviceClass ontbreekt, probeer het uit de bestaande Domoticz device definitie te halen
                 if deviceClassTrig == "Unknown" and dev in Devices:
-                     # We laten het hier op "Unknown" of je kunt proberen 
-                     # het op te zoeken in een eerdere scan.
                      pass                
                 level = 0
                 status_num = 0
@@ -498,24 +496,12 @@ class BasePlugin:
                             Domoticz.Status("Updating device : "+Devices[dev].Units[status_num].Name)
                             logging.info("Updating device : "+Devices[dev].Units[status_num].Name)
                             if (level == 0):
-                                # Devices[dev].Units[status_num].nValue = 0
-                                # Devices[dev].Units[status_num].sValue = "0"
-                                # Devices[dev].Units[status_num].LastLevel = 0
-                                # Devices[dev].Units[status_num].Update()
                                 nValue = 0
                                 sValue = "0"
                             if (level == 100):
-                                # Devices[dev].Units[status_num].nValue = 1
-                                # Devices[dev].Units[status_num].sValue = "100"
-                                # Devices[dev].Units[status_num].LastLevel = 100
-                                # Devices[dev].Units[status_num].Update()
                                 nValue = 1
                                 sValue = "100"
                             if (level != 0 and level != 100):
-                                # Devices[dev].Units[status_num].nValue = 2
-                                # Devices[dev].Units[status_num].sValue = str(level)
-                                # Devices[dev].Units[status_num].LastLevel = int(level)
-                                # Devices[dev].Units[status_num].Update()
                                 nValue = 2
                                 sValue = str(level)
                             UpdateDevice(dev, status_num, nValue,sValue)
@@ -658,33 +644,43 @@ class BasePlugin:
        
 global _plugin
 _plugin = BasePlugin()
+
 def onStart():
     global _plugin
     _plugin.onStart()
+
 def onStop():
     global _plugin
     _plugin.onStop()
+
 def onDeviceAdded(DeviceID, Unit):
     global _plugin
     _plugin.onDeviceAdded(DeviceID, Unit)
+
 def onDeviceModified(DeviceID, Unit):
     global _plugin
     _plugin.onDeviceModified(DeviceID, Unit)
+
 def onDeviceRemoved(DeviceID, Unit):
     global _plugin
     _plugin.onDeviceRemoved(DeviceID, Unit)
+
 def onConnect(Connection, Status, Description):
     global _plugin
     _plugin.onConnect(Connection, Status, Description)
+
 def onMessage(Connection, Data):
     global _plugin
     _plugin.onMessage(Connection, Data)
+
 def onCommand(DeviceId, Unit, Command, Level, Color):
     global _plugin
     _plugin.onCommand(DeviceId, Unit, Command, Level, Color)
+
 def onDisconnect(Connection):
     global _plugin
     _plugin.onDisconnect(Connection)
+
 def onHeartbeat():
     global _plugin
     _plugin.onHeartbeat()
@@ -711,6 +707,7 @@ def firstFree():
         if num not in Devices:
             return num
     return
+
 # Configuration Helpers
 def getConfigItem(Key=None, Default={}):
    Value = Default
@@ -741,6 +738,7 @@ def setConfigItem(Key=None, Value=None):
     except Exception as inst:
        Domoticz.Error("Domoticz.Configuration operation failed: '"+str(inst)+"'")
     return Config
+
 def UpdateDevice(Device, Unit, nValue, sValue, AlwaysUpdate=False):
     # Make sure that the Domoticz device still exists (they can be deleted) before updating it
     if (Device in Devices):

@@ -125,8 +125,8 @@ class BasePlugin:
  
         # Controleer Mode2 en zet standaard als leeg of ongeldig
         if not Parameters.get('Mode2') or ';' not in Parameters['Mode2']:
-            Domoticz.Log("Mode2 leeg of ongeldig, instellen op standaard 300,900")
-            Parameters['Mode2'] = "300,900"
+            Domoticz.Log("Mode2 leeg of ongeldig, instellen op standaard 300;900")
+            Parameters['Mode2'] = "300;900"
         # Controleer Mode3 (sunrise;sunset delay)
         if not Parameters.get('Mode3') or ';' not in Parameters['Mode3']:
             Domoticz.Log("Mode3 leeg of ongeldig, instellen op standaard 30;60")
@@ -419,25 +419,16 @@ class BasePlugin:
                         Domoticz.Error(f"   Fout: {short_error}")
 
                         self.last_connection_error_time = now
-                    # --- Einde melding ---
-                    # Optioneel: stil houden tussendoor
-                    # Domoticz.Debug("Somfy verbinding tijdelijk niet mogelijk (gelogd max 1x per minuut)")
 
                 except exceptions.NoListenerFailure as exp:
                     Domoticz.Error("Failed to request data: " + str(exp))
                     self.tahoma.register_listener()
-
-                # Geen return False meer hierboven! Alleen bij echte fouten als je wilt stoppen
-                # We gaan gewoon door, ook bij tijdelijke fouten
 
             # reset runCounter naar juiste interval (altijd, ook als poll mislukt)
             self.runCounter = interval
             self.heartbeat = False
 
         return True
-
-        # fallback
-        return "06:00", "22:00"
 
     def update_devices_status(self, Updated_devices):
         logging.debug("updating device status self.tahoma.startup = "+str(self.tahoma.startup)+" on num datasets: "+str(len(Updated_devices)))
@@ -473,10 +464,14 @@ class BasePlugin:
                     lumstatus_l = False
 
                     if ((state["name"] == "core:ClosureState") or (state["name"] == "core:DeploymentState")):
-                        level = int(state["value"])
-                        level = 100 - level #invert open/close percentage
-                        status_num = 1
-                      
+                        if (deviceClassTrig == "Awning"):
+                            level = int(state["value"]) #Don't invert open/close percentage for an Awning
+                            status_num = 1
+                        else:
+                            level = int(state["value"])
+                            level = 100 - level #invert open/close percentage
+                            status_num = 1
+           
                     if ((state["name"] == "core:SlateOrientationState")):
                         level = int(state["value"])
                         #level = 100 - level 
@@ -496,24 +491,13 @@ class BasePlugin:
                             Domoticz.Status("Updating device : "+Devices[dev].Units[status_num].Name)
                             logging.info("Updating device : "+Devices[dev].Units[status_num].Name)
                             if (level == 0):
-                                # Devices[dev].Units[status_num].nValue = 0
-                                # Devices[dev].Units[status_num].sValue = "0"
-                                # Devices[dev].Units[status_num].LastLevel = 0
-                                # Devices[dev].Units[status_num].Update()
                                 nValue = 0
                                 sValue = "0"
                             if (level == 100):
-                                # Devices[dev].Units[status_num].nValue = 1
-                                # Devices[dev].Units[status_num].sValue = "100"
-                                # Devices[dev].Units[status_num].LastLevel = 100
-                                # Devices[dev].Units[status_num].Update()
                                 nValue = 1
                                 sValue = "100"
                             if (level != 0 and level != 100):
-                                # Devices[dev].Units[status_num].nValue = 2
-                                # Devices[dev].Units[status_num].sValue = str(level)
-                                # Devices[dev].Units[status_num].LastLevel = int(level)
-                                # Devices[dev].Units[status_num].Update()
+
                                 nValue = 2
                                 sValue = str(level)
                             UpdateDevice(dev, status_num, nValue,sValue)
@@ -526,9 +510,6 @@ class BasePlugin:
                             Domoticz.Status("Updating device : "+Devices[dev].Units[1].Name)
                             logging.info("Updating device : "+Devices[dev].Units[1].Name)
                             if (lumlevel != 0 and lumlevel != 120000):
-                                # Devices[dev].Units[1].nValue = 3
-                                # Devices[dev].Units[1].sValue = str(lumlevel)
-                                # Devices[dev].Units[1].Update()
                                 nValue = 3
                                 sValue = str(lumlevel)
                                 UpdateDevice(dev, 1, nValue,sValue)

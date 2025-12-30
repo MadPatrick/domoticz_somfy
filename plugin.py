@@ -1,13 +1,14 @@
+
 # Tahoma/Connexoon IO blind plugin
 #
-# Author: Nonolk, 2019-2020
 #
+# 
 # All credits for the plugin are for Nonolk, who is the origin plugin creator
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.0.0" externallink="https://github.com/MadPatrick/somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="4.5.2" externallink="https://github.com/MadPatrick/somfy">
     <description>
         <br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
-        Version: 5.0.0
+        Version: 4.5.2
         <br/>This plugin connects to the Tahoma or Connexoon box either via the web API or via local access.
         <br/>Various devices are supported (RollerShutter, LightSensor, Screen, Awning, Window, VenetianBlind, etc.).
         <br/>For new devices, please raise a ticket at the Github link above.
@@ -18,11 +19,21 @@
             <li>Local: when connection method local is selected, fill this section as well</li>
             <li>Debug: allows to set log level and specify log file location</li>
         </ol>
-        <br/><font color="yellow">Please put in the additional parameters in the config.txt file in the plugin folder</font><br/>
     </description>
     <params>
         <param field="Username" label="Username" width="200px" required="true" default=""/>
         <param field="Password" label="Password" width="200px" required="true" default="" password="true"/>
+        <param field="Mode2" label="Refresh interval (day;night)" width="100px" default="20;900">
+            <description>
+                <br/>Enter two numbers separated by a ;  
+                <br/>First for day refresh interval (seconds), second for night refresh interval (seconds)
+            </description>
+        </param>
+        <param field="Mode3" label="Night Delay" width="200px" default="30;60">
+            <description>
+                <br/>Delay for Sunrise and Sunset
+            </description>
+        </param>
         <param field="Mode4" label="Connection" width="100px">
             <description>
                 <br/>Choose how to interact with the Somfy/Tahoma/Connexoon box:
@@ -61,6 +72,7 @@
     </params>
 </plugin>
 """
+
 # Tahoma/Connexoon IO blind plugin
 import DomoticzEx as Domoticz
 import json
@@ -75,6 +87,7 @@ import utils
 import requests
 import datetime
 import urllib.request
+
 class BasePlugin:
     def __init__(self):
         self.enabled = False
@@ -92,18 +105,15 @@ class BasePlugin:
         self.version = ""
         self.local = False
         self.runCounter = 0
-        # Defaults for external config===
-        self.domoticz_host = "127.0.0.1"
-        self.domoticz_port = "8080"
         self.last_daily_refresh = None
         self.last_sunrise = None
         self.last_sunset = None
-        self.last_sunrise_date = None
-        self.last_sunset_date = None
-   
+
+    
     def onStart(self):
+
         if os.path.exists(Parameters["Mode5"]):
-            log_dir = Parameters["Mode5"]
+            log_dir = Parameters["Mode5"] 
         else:
             Domoticz.Status("Location {0} does not exist, logging to default location".format(Parameters["Mode5"]))
             log_dir = ""
@@ -118,13 +128,36 @@ class BasePlugin:
             logging.basicConfig(format='%(asctime)s - %(levelname)-8s - %(filename)-18s - %(message)s', filename=log_fullname,level=logging.INFO)
         Domoticz.Debug("os.path.exists(Parameters['Mode5']) = {}".format(os.path.exists(Parameters["Mode5"])))
         logging.info("starting plugin version "+Parameters["Version"])
+ 
+        # Controleer Mode2 en zet standaard als leeg of ongeldig
+        if not Parameters.get('Mode2') or ';' not in Parameters['Mode2']:
+            Domoticz.Log("Mode2 leeg of ongeldig, instellen op standaard 20;900")
+            Parameters['Mode2'] = "20;900"
+        # Controleer Mode3 (sunrise;sunset delay)
+        if not Parameters.get('Mode3') or ';' not in Parameters['Mode3']:
+            Domoticz.Log("Mode3 leeg of ongeldig, instellen op standaard 30;60")
+            Parameters['Mode3'] = "30;60"
 
-        # === Defaults voor refresh & sunrise/sunset ===
-        self.dayInterval = 300
-        self.nightInterval = 900
-        self.sunriseDelay = 30
-        self.sunsetDelay = 60
+        try:
+            sr_delay_str, ss_delay_str = Parameters['Mode3'].split(';')
+            self.sunriseDelay = int(sr_delay_str.strip())
+            self.sunsetDelay = int(ss_delay_str.strip())
+        except Exception as e:
+            Domoticz.Error("Invalid Mode3 value, using defaults 30;60: " + str(e))
+            self.sunriseDelay = 30
+            self.sunsetDelay = 60
 
+        try:
+            day_str, night_str = Parameters['Mode2'].split(';')
+            self.dayInterval = int(day_str.strip())
+            self.nightInterval = int(night_str.strip())
+        except Exception as e:
+            Domoticz.Error("Invalid Mode2 value, using defaults 20;900: " + str(e))
+            self.dayInterval = 300
+            self.nightInterval = 900
+        self.runCounter = self.dayInterval
+        Domoticz.Heartbeat(1)
+        
         # === Read config.txt ===
         config_path = os.path.join(os.path.dirname(__file__), "config.txt")
         if os.path.exists(config_path):
@@ -163,7 +196,6 @@ class BasePlugin:
         else:
             Domoticz.Status("config.txt not found, using default refresh & delay values")
 
-        self.enabled = True
 
         #check upgrading of version needs actions
         self.version = Parameters["Version"]
@@ -173,7 +205,7 @@ class BasePlugin:
 
         pin = Parameters["Address"]
         port = int(Parameters["Port"])
-       
+        
         logging.debug("starting to log in with mode " + Parameters["Mode4"])
         if Parameters["Mode4"] == "Local":
             self.tahoma = SomfyBox(pin, port)
@@ -181,12 +213,13 @@ class BasePlugin:
         else:
             self.tahoma = tahoma.Tahoma()
             self.local = False
+
         try:
             self.tahoma.tahoma_login(str(Parameters["Username"]), str(Parameters["Password"]))
         except exceptions.LoginFailure as exp:
             Domoticz.Error("Failed to login: " + str(exp))
             return False
-       
+        
         if self.tahoma.logged_in:
             if self.local:
                 logging.debug("check if token stored in configuration")
@@ -204,12 +237,13 @@ class BasePlugin:
                 self.tahoma.register_listener()
             else:
                 self.tahoma.register_listener()
+
         if self.tahoma.logged_in and firstFree() < 249:
             filtered_devices = self.tahoma.get_devices()
             self.create_devices(filtered_devices)
             self.update_devices_status(utils.filter_states(filtered_devices))
         return True
-           
+            
     def onStop(self):
         logging.info("stopping plugin")
         self.heartbeat = False
@@ -221,6 +255,7 @@ class BasePlugin:
         elif (self.cookie and self.tahoma.logged_in and (not self.command)):
           event_list = self.tahoma.get_events()
           self.update_devices_status(event_list)
+
         elif (self.command):
           event_list = self.tahoma.tahoma_command(self.command_data)
           self.update_devices_status(event_list)
@@ -232,7 +267,6 @@ class BasePlugin:
 
     def refresh_daily_data(self):
         today = datetime.date.today()
-
         # Check of we vandaag al ververst hebben
         if self.last_daily_refresh == today:
             return
@@ -286,7 +320,7 @@ class BasePlugin:
 
         # Markeer de dag als ververst
         self.last_daily_refresh = today
-        Domoticz.Log(f"Daily refresh: sunrise={self.last_sunrise}, sunset={self.last_sunset}")
+        Domoticz.Log(f"Daily refresh: host={self.domoticz_host}, port={self.domoticz_port}, dayInterval={self.dayInterval}, nightInterval={self.nightInterval}, sunriseDelay={self.sunriseDelay}, sunsetDelay={self.sunsetDelay}")
 
     def onMessage(self, Connection, Data):
         Domoticz.Error("onMessage called but not implemented")
@@ -298,11 +332,11 @@ class BasePlugin:
         action = {}
         commands = {}
         params = []
-       
+        
         if Unit == 1:
             # unit 1 used for up/down movement
             if (str(Command) == "Off" or str(Command) == "Close"):
-                commands["name"] = "close"
+                commands["name"] = "close"   
             elif (str(Command) == "On" or str(Command) == "Open"):
                 commands["name"] = "open"
             elif (str(Command) == "Stop"):
@@ -328,6 +362,7 @@ class BasePlugin:
         else:
             logging.error("unit not supported")
             return False
+
         commands_serialized.append(commands)
         action["deviceURL"] = DeviceId
         action["commands"] = commands_serialized
@@ -340,12 +375,14 @@ class BasePlugin:
         else:
             self.command_data = json.dumps(data, indent=None, sort_keys=True)
         logging.debug("preparing command: json data: "+str(self.command_data))
+
         if (not self.tahoma.logged_in):
             logging.info("Not logged in, must connect")
             self.command = True
             self.tahoma.tahoma_login(str(Parameters["Username"]), str(Parameters["Password"]))
             if self.tahoma.logged_in:
                 self.tahoma.register_listener()
+
         event_list = []
         try:
             self.tahoma.send_command(self.command_data)
@@ -378,6 +415,7 @@ class BasePlugin:
 
     def onHeartbeat(self):
         self.runCounter -= 1
+
         if not self.enabled:
             return False
 
@@ -386,66 +424,137 @@ class BasePlugin:
         today = datetime.date.today()
 
         self.refresh_daily_data()
+        # Gebruik opgeslagen sunrise/sunset
+        sunrise_str = self.last_sunrise or "06:00"
+        sunset_str = self.last_sunset or "22:00"
 
-        # Convert to minutes
-        sr_hour, sr_min = map(int, self.last_sunrise.split(':'))
-        ss_hour, ss_min = map(int, self.last_sunset.split(':'))
+        sr_hour, sr_min = map(int, sunrise_str.split(':'))
+        ss_hour, ss_min = map(int, sunset_str.split(':'))
         sunrise = sr_hour * 60 + sr_min
         sunset = ss_hour * 60 + ss_min
 
-        # set day/night interval
+        # Default fallback
+        sunrise = 360   # 06:00
+        sunset = 1320   # 22:00
+        sunrise_str = "06:00"
+        sunset_str = "22:00"
+
+        # Bepaal interval day/night
         if sunrise - self.sunriseDelay <= now_minutes < sunset + self.sunsetDelay:
             interval = self.dayInterval
-            status = "Day"
-            next_switch_dt = now.replace(hour=ss_hour, minute=ss_min, second=0) + datetime.timedelta(minutes=self.sunsetDelay)
         else:
             interval = self.nightInterval
-            status = "Night"
-            next_switch_dt = now.replace(hour=sr_hour, minute=sr_min, second=0) - datetime.timedelta(minutes=self.sunriseDelay)
 
-        if next_switch_dt < now:
-            next_switch_dt += datetime.timedelta(days=1)
 
-        # Log only if sunrise, sunset or interval changed
+        # Probeer sunrise/sunset op te halen via Domoticz JSON API
+        try:
+            api_url = f"http://{self.domoticz_host}:{self.domoticz_port}/json.htm?type=command&param=getSunRiseSet"
+            with urllib.request.urlopen(api_url, timeout=10) as response:
+                data = json.loads(response.read().decode('utf-8'))
+                sunrise_full = data.get("Sunrise", "06:00:00")
+                sunset_full = data.get("Sunset", "22:00:00")
+                sunrise_str = self.last_sunrise or "06:00"
+                sunset_str = self.last_sunset or "22:00"
+                sr_hour, sr_min = map(int, sunrise_str.split(':'))
+                ss_hour, ss_min = map(int, sunset_str.split(':'))
+                sunrise = sr_hour * 60 + sr_min
+                sunset = ss_hour * 60 + ss_min
+        except Exception as e:
+            Domoticz.Error(f"Failed to get sunrise/sunset from Domoticz JSON, using default: {e}")
+
+        # Bepaal dag/nacht interval
+        if sunrise - self.sunriseDelay <= now_minutes < sunset + self.sunsetDelay:
+            interval = self.dayInterval
+        else:
+            interval = self.nightInterval
+
+        # Alleen loggen als sunrise, sunset of interval veranderd
+        if not hasattr(self, 'last_sunrise'):
+            self.last_sunrise = None
+        if not hasattr(self, 'last_sunset'):
+            self.last_sunset = None
+        if not hasattr(self, 'last_interval'):
+            self.last_interval = None
+
         changed = False
-        if getattr(self, 'last_logged_sunrise', None) != self.last_sunrise or getattr(self, 'last_logged_sunset', None) != self.last_sunset:
+        if self.last_sunrise != sunrise_str or self.last_sunset != sunset_str:
             changed = True
-            self.last_logged_sunrise = self.last_sunrise
-            self.last_logged_sunset = self.last_sunset
-        if getattr(self, 'last_logged_interval', None) != interval:
+            self.last_sunrise = sunrise_str
+            self.last_sunset = sunset_str
+
+        if self.last_interval != interval:
             changed = True
-            self.last_logged_interval = interval
+            self.last_interval = interval
+
+        # Eerste run altijd loggen
+        if not hasattr(self, 'last_logged'):
+            self.last_logged = False
+
+        if not self.last_logged:
+            changed = True
+            self.last_logged = True
 
         if changed:
-            Domoticz.Log(f"Time={now.strftime('%H:%M')} sunrise={self.last_sunrise} sunset={self.last_sunset}")
+            Domoticz.Log(f"Time={now.strftime('%H:%M')} sunrise={sunrise_str} sunset={sunset_str}")
+            status = "Day" if interval == self.dayInterval else "Night"
+            now_dt = datetime.datetime.now()
+
+            if status == "Day":
+                # Day eindigt bij sunset + 60 min
+                ss_hour = int(sunset_str[:2])
+                ss_minute = int(sunset_str[3:])
+                next_switch_dt = now_dt.replace(hour=ss_hour, minute=ss_minute, second=0)
+                next_switch_dt += datetime.timedelta(minutes=self.sunsetDelay) 
+                if next_switch_dt < now_dt:
+                    next_switch_dt += datetime.timedelta(days=1)
+            else:  # Night
+                # Night eindigt bij sunrise - 30 min
+                sr_hour = int(sunrise_str[:2])
+                sr_minute = int(sunrise_str[3:])
+                next_switch_dt = now_dt.replace(hour=sr_hour, minute=sr_minute, second=0)
+                next_switch_dt -= datetime.timedelta(minutes=self.sunriseDelay)
+                if next_switch_dt < now_dt:
+                    next_switch_dt += datetime.timedelta(days=1)
+
             Domoticz.Log(f"Refresh interval={interval} Seconds ({status}) until {next_switch_dt.strftime('%H:%M')}")
 
-        # Poll Somfy box if counter is 0 or heartbeat trigger active
+        # Poll Somfy box als counter op nul staat of heartbeat trigger actief
         if self.runCounter <= 0 or self.heartbeat:
-            if self.local or (self.tahoma.logged_in and not getattr(self.tahoma, 'startup', False)):
+            if self.local or (self.tahoma.logged_in and not self.tahoma.startup):
                 try:
                     filtered_devices = self.tahoma.get_devices()
                     self.update_devices_status(utils.filter_states(filtered_devices))
+
+                    # Reset de "laatste fout-tijd" als het nu wel lukt
                     if hasattr(self, 'last_connection_error_time'):
                         del self.last_connection_error_time
+
                 except (exceptions.TooManyRetries, exceptions.FailureWithErrorCode,
                         exceptions.FailureWithoutErrorCode, json.decoder.JSONDecodeError,
                         requests.exceptions.ConnectionError) as exp:
-                    now_ts = time.time()
-                    if not hasattr(self, 'last_connection_error_time') or (now_ts - self.last_connection_error_time > 60):
+                    now = time.time()
+                    if not hasattr(self, 'last_connection_error_time') or (now - self.last_connection_error_time > 60):
                         Domoticz.Error("Somfy: Unable to connect to the local box")
                         Domoticz.Error("This can occur during temporary internet or network interruptions")
                         Domoticz.Error("Next message in 1 minute (silent in between)")
+                        # Optioneel: de technische fout kort weergeven (zonder hele stack)
                         short_error = str(exp).split('Caused by')[0].strip()
-                        Domoticz.Error(f" Fout: {short_error}")
-                        self.last_connection_error_time = now_ts
+                        Domoticz.Error(f"   Fout: {short_error}")
+
+                        self.last_connection_error_time = now
+
                 except exceptions.NoListenerFailure as exp:
                     Domoticz.Error("Failed to request data: " + str(exp))
                     self.tahoma.register_listener()
+
+            # reset runCounter naar juiste interval (altijd, ook als poll mislukt)
             self.runCounter = interval
             self.heartbeat = False
 
         return True
+
+        # fallback
+        return "06:00", "22:00"
 
     def update_devices_status(self, Updated_devices):
         logging.debug("updating device status self.tahoma.startup = "+str(self.tahoma.startup)+" on num datasets: "+str(len(Updated_devices)))
@@ -457,23 +566,15 @@ class BasePlugin:
         num_updates = 0
         logging.debug("checking device updates for "+str(len(eventList))+" filtered events")
         for dataset in eventList:
-            #logging.debug("checking dataset for URL: "+str(dataset['deviceURL']))
             logging.debug("checking dataset: "+str(dataset))
-
             if dataset["deviceURL"] not in Devices:
                 Domoticz.Error("device not found for URL: "+str(dataset["deviceURL"]))
                 logging.error("device not found for URL: "+str(dataset["deviceURL"])+" while updating states")
                 continue #no deviceURL found that matches to domoticz Devices, skip to next dataset
-
-            if (dataset["name"] == "DeviceStateChangedEvent"):
-
-                continue #dataset does not contain correct event, skip to next dataset
-
             if (dataset["deviceURL"].startswith("io://")):
                 dev = dataset["deviceURL"]
-                deviceClassTrig = dataset.get("deviceClass", "Unknown") 
-                if deviceClassTrig == "Unknown" and dev in Devices:
-                     pass                
+#                deviceClassTrig = dataset["deviceClass"]
+#BETERE OPTIE	deviceClassTrig = dataset.get("deviceClass")
                 level = 0
                 status_num = 0
                 status = None
@@ -485,28 +586,47 @@ class BasePlugin:
                     logging.debug("update_devices_status: dataset['name'] != DeviceStateChangedEvent: "+str(dataset["name"])+": breaking out")
                     continue #dataset does not contain correct event, skip to next dataset
 
+                # === Determine device class safely (solution 2) ===
+                deviceClassTrig = getConfigItem(
+                    f"class_{dataset['deviceURL']}",
+                    None
+                )
+
+                if not deviceClassTrig:
+                    try:
+                        deviceClassTrig = dataset["definition"]["uiClass"]
+                        setConfigItem(
+                            f"class_{dataset['deviceURL']}",
+                            deviceClassTrig
+                        )
+                        Domoticz.Log(
+                            f"Stored device class for {dataset['deviceURL']}: {deviceClassTrig}"
+                        )
+                    except Exception:
+                        deviceClassTrig = "Unknown"
+
+
                 for state in states:
                     status_num = 0
                     lumstatus_l = False
 
-                    if ((state["name"] == "core:ClosureState") or (state["name"] == "core:DeploymentState")):
-                        if (deviceClassTrig == "Awning"):
-                            level = int(state["value"]) #Don't invert open/close percentage for an Awning
-                            status_num = 1
-                        else:
-                            level = int(state["value"])
-                            level = 100 - level #invert open/close percentage
-                            status_num = 1
-                     
+                    if state["name"] in ("core:ClosureState", "core:DeploymentState"):
+                        level = int(state["value"])
+
+                        if deviceClassTrig != "Awning":
+                            level = 100 - level
+
+                        status_num = 1
+                      
                     if ((state["name"] == "core:SlateOrientationState")):
                         level = int(state["value"])
-                        #level = 100 - level
+                        #level = 100 - level 
                         status_num = 2
 
                     if (state["name"] == "core:LuminanceState"):
                         lumlevel = state["value"]
                         lumstatus_l = True
-                   
+                    
                     logging.debug("checking for update on state[name]: '" +state["name"]+"' with status_num = '"+str(status_num)+ "' for device: '"+dev+"'")
                     if status_num > 0:
                         if (Devices[dev].Units[status_num].sValue):
@@ -539,6 +659,7 @@ class BasePlugin:
                                 sValue = str(lumlevel)
                                 UpdateDevice(dev, 1, nValue,sValue)
                     num_updates += 1
+
         return num_updates
 
     def onDeviceAdded(self, DeviceID, Unit):
@@ -582,10 +703,11 @@ class BasePlugin:
     def create_devices(self, filtered_devices):
         logging.debug("create_devices: devices found, domoticz: "+str(len(Devices))+" API: "+str(len(filtered_devices)))
         created_devices = 0
-       
+        
         if (len(Devices) <= len(filtered_devices)):
             #Domoticz devices already present but less than from API or starting up
             logging.debug("New device(s) detected")
+
             for device in filtered_devices:
                 found = False
                 if type(device) is str:
@@ -604,6 +726,7 @@ class BasePlugin:
                 if (found==False):
                     #DeviceID not found, create new one
                     swtype = None
+
                     logging.debug("create_devices: Must create new device: "+device["label"])
 
                     if (device["deviceURL"].startswith("io://") or (device["deviceURL"].startswith("rts://"))):
@@ -616,7 +739,7 @@ class BasePlugin:
                         elif (device["definition"]["uiClass"] == "RollerShutter"):
                             deviceType = 244
                             swtype = 21
-                            subtype2 = 73
+                            subtype2 = 73                    
                         elif (device["definition"]["uiClass"] == "LightSensor"):
                             deviceType = 246
                             swtype = 12
@@ -626,6 +749,7 @@ class BasePlugin:
                         subtype2 = 73
                         swtype = 9
                         used = 0 #0 = False
+
                     # extended framework: create first device then unit? or create device+unit in one go?
                     created_devices += 1
                     Domoticz.Device(DeviceID=device["deviceURL"]) #use deviceURL as identifier for Domoticz.Device instance
@@ -636,14 +760,12 @@ class BasePlugin:
                     else:
                         #create a single unit for all other device types
                         Domoticz.Unit(Name=device["label"], Unit=1, Type=deviceType, Subtype=subtype2, Switchtype=swtype, DeviceID=device["deviceURL"], Used=used).Create()
-                    
+                     
                     logging.info("New device created: "+device["label"])
                 else:
                     found = False
         logging.debug("create_devices: finished create devices")
-
         return len(filtered_devices),created_devices
-
         #return Devices
 
     def updateToEx(self):
@@ -663,15 +785,7 @@ class BasePlugin:
         setConfigItem(Key="patchVersion", Value=patch)
         setConfigItem(Key="plugin version", Value="{0}.{1}.{2}".format(major, minor, patch))
 
-    def updateToEx(self):
-        """routine to check if we can update to the Domoticz extended plugin framework"""
-        if len(Devices)>0:
-            Domoticz.Error("Devices are present. Please remove them before upgrading to this version!")
-            Domoticz.Error("Plugin will now exit")
-            return False
-        else:
-            return True
-
+        
 global _plugin
 _plugin = BasePlugin()
 
@@ -728,7 +842,7 @@ def DumpConfigToLog():
             Domoticz.Debug( "Configuration '" + x + "':'" + str(Configurations[x]) + "'")
     Domoticz.Debug("Device count: " + str(len(Devices)))
     for x in Devices:
-        Domoticz.Debug("Device: " + str(x) + " - " + str(Devices[x]))
+        Domoticz.Debug("Device:           " + str(x) + " - " + str(Devices[x]))
     return
 
 def firstFree():
@@ -746,13 +860,13 @@ def getConfigItem(Key=None, Default={}):
        if (Key != None):
            Value = Config[Key] # only return requested key if there was one
        else:
-           Value = Config # return the whole configuration if no key
+           Value = Config      # return the whole configuration if no key
    except KeyError:
        Value = Default
    except Exception as inst:
        Domoticz.Error("Domoticz.Configuration read failed: '"+str(inst)+"'")
    return Value
-  
+   
 def setConfigItem(Key=None, Value=None):
     Config = {}
     if type(Value) not in (str, int, float, bool, bytes, bytearray, list, dict):
@@ -763,7 +877,7 @@ def setConfigItem(Key=None, Value=None):
        if (Key != None):
            Config[Key] = Value
        else:
-           Config = Value # set whole configuration if no key specified
+           Config = Value  # set whole configuration if no key specified
        Config = Domoticz.Configuration(Config)
     except Exception as inst:
        Domoticz.Error("Domoticz.Configuration operation failed: '"+str(inst)+"'")
@@ -779,7 +893,7 @@ def UpdateDevice(Device, Unit, nValue, sValue, AlwaysUpdate=False):
                 Devices[Device].Units[Unit].sValue = sValue
                 Devices[Device].Units[Unit].LastLevel = int(sValue)
                 Devices[Device].Units[Unit].Update()
-               
+                
                 #Devices[Unit].Update(nValue=nValue, sValue=str(sValue), TimedOut=TimedOut)
                 Domoticz.Debug("Update "+str(nValue)+":'"+str(sValue)+"' ("+Devices[Device].Units[Unit].Name+")")
             except:

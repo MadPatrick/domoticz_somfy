@@ -5,10 +5,10 @@
 # 
 # All credits for the plugin are for Nonolk, who is the origin plugin creator
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="4.5.2" externallink="https://github.com/MadPatrick/somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="4.6.0" externallink="https://github.com/MadPatrick/somfy">
     <description>
         <br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
-        Version: 4.5.2
+        Version: 4.6.0
         <br/>This plugin connects to the Tahoma or Connexoon box either via the web API or via local access.
         <br/>Various devices are supported (RollerShutter, LightSensor, Screen, Awning, Window, VenetianBlind, etc.).
         <br/>For new devices, please raise a ticket at the Github link above.
@@ -321,6 +321,7 @@ class BasePlugin:
         # Markeer de dag als ververst
         self.last_daily_refresh = today
         Domoticz.Log(f"Daily refresh: host={self.domoticz_host}, port={self.domoticz_port}, dayInterval={self.dayInterval}, nightInterval={self.nightInterval}, sunriseDelay={self.sunriseDelay}, sunsetDelay={self.sunsetDelay}")
+        Domoticz.Log(f"Daily refresh: New setting sunrise={self.last_sunrise} sunset={self.last_sunset}")
 
     def onMessage(self, Connection, Data):
         Domoticz.Error("onMessage called but not implemented")
@@ -427,40 +428,16 @@ class BasePlugin:
         # Gebruik opgeslagen sunrise/sunset
         sunrise_str = self.last_sunrise or "06:00"
         sunset_str = self.last_sunset or "22:00"
-
         sr_hour, sr_min = map(int, sunrise_str.split(':'))
         ss_hour, ss_min = map(int, sunset_str.split(':'))
         sunrise = sr_hour * 60 + sr_min
         sunset = ss_hour * 60 + ss_min
-
-        # Default fallback
-        sunrise = 360   # 06:00
-        sunset = 1320   # 22:00
-        sunrise_str = "06:00"
-        sunset_str = "22:00"
 
         # Bepaal interval day/night
         if sunrise - self.sunriseDelay <= now_minutes < sunset + self.sunsetDelay:
             interval = self.dayInterval
         else:
             interval = self.nightInterval
-
-
-        # Probeer sunrise/sunset op te halen via Domoticz JSON API
-        try:
-            api_url = f"http://{self.domoticz_host}:{self.domoticz_port}/json.htm?type=command&param=getSunRiseSet"
-            with urllib.request.urlopen(api_url, timeout=10) as response:
-                data = json.loads(response.read().decode('utf-8'))
-                sunrise_full = data.get("Sunrise", "06:00:00")
-                sunset_full = data.get("Sunset", "22:00:00")
-                sunrise_str = self.last_sunrise or "06:00"
-                sunset_str = self.last_sunset or "22:00"
-                sr_hour, sr_min = map(int, sunrise_str.split(':'))
-                ss_hour, ss_min = map(int, sunset_str.split(':'))
-                sunrise = sr_hour * 60 + sr_min
-                sunset = ss_hour * 60 + ss_min
-        except Exception as e:
-            Domoticz.Error(f"Failed to get sunrise/sunset from Domoticz JSON, using default: {e}")
 
         # Bepaal dag/nacht interval
         if sunrise - self.sunriseDelay <= now_minutes < sunset + self.sunsetDelay:

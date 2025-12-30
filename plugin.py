@@ -1,4 +1,3 @@
-
 # Tahoma/Connexoon IO blind plugin
 #
 #
@@ -19,6 +18,9 @@
             <li>Local: when connection method local is selected, fill this section as well</li>
             <li>Debug: allows to set log level and specify log file location</li>
         </ol>
+        <br/><font color="yellow">Please put in the additional parameters in the config.txt file in the plugin folder</font>
+        <br/>You can change the parameters and it will reload at midnight. No need to restart the app for the config.txt changes
+        <br/>
     </description>
     <params>
         <param field="Username" label="Username" width="200px" required="true" default=""/>
@@ -109,7 +111,17 @@ class BasePlugin:
         self.last_daily_refresh = None
         self.last_sunrise = None
         self.last_sunset = None
+        # defaults config.txt
+        self.domoticz_host = "127.0.0.1"
+        self.domoticz_port = "8080"
+        self.dayInterval = 20
+        self.nightInterval = 900
+        self.sunriseDelay = 30
+        self.sunsetDelay = 60
+        self.temp_delay = 10
+        self.temp_time = 60
         self.temp_interval_end = 0  # Houdt versnelling bij
+
     
     def onStart(self):
 
@@ -159,59 +171,7 @@ class BasePlugin:
         self.runCounter = self.dayInterval
         Domoticz.Heartbeat(1)
         
-        # === Read config.txt ===
-        # defaults
-        self.domoticz_host = "127.0.0.1"
-        self.domoticz_port = "8080"
-        self.dayInterval = 20
-        self.nightInterval = 900
-        self.sunriseDelay = 30
-        self.sunsetDelay = 60
-        self.temp_delay = 10
-        self.temp_time = 60
-
-        config_path = os.path.join(os.path.dirname(__file__), "config.txt")
-        if os.path.exists(config_path):
-            try:
-                with open(config_path, "r") as f:
-                    for line in f:
-                        line = line.strip()
-                        if not line or line.startswith("#") or "=" not in line:
-                            continue
-
-                        key, value = line.split("=", 1)
-                        key = key.strip().upper()
-                        value = value.strip()
-
-                        if key == "DOMOTICZ_HOST":
-                            self.domoticz_host = value
-                        elif key == "DOMOTICZ_PORT":
-                            self.domoticz_port = value
-                        elif key == "REFRESH_DAY":
-                            self.dayInterval = int(value)
-                        elif key == "REFRESH_NIGHT":
-                            self.nightInterval = int(value)
-                        elif key == "SUNRISE_DELAY":
-                            self.sunriseDelay = int(value)
-                        elif key == "SUNSET_DELAY":
-                            self.sunsetDelay = int(value)
-                        if key == "TEMP_DELAY":
-                            self.temp_delay = int(value)
-                        elif key == "TEMP_TIME":
-                            self.temp_time = int(value)
-
-                Domoticz.Log(
-                    f"config.txt loaded: "
-                    f"host={self.domoticz_host}:{self.domoticz_port}, "
-                    f"day={self.dayInterval}s, night={self.nightInterval}s, "
-                    f"sunriseDelay={self.sunriseDelay}m, sunsetDelay={self.sunsetDelay}m,"
-                    f"Temp interval: {self.temp_delay}s for {self.temp_time // 60}m"
-
-                )
-            except Exception as e:
-                Domoticz.Error(f"Error reading config.txt, using defaults: {e}")
-        else:
-            Domoticz.Status("config.txt not found, using default refresh & delay values")
+        self.load_config_txt(log=False)
 
         #check upgrading of version needs actions
         self.version = Parameters["Version"]
@@ -288,35 +248,7 @@ class BasePlugin:
         if self.last_daily_refresh == today:
             return
 
-        # === 1. Config opnieuw inlezen ===
-        config_path = os.path.join(os.path.dirname(__file__), "config.txt")
-        if os.path.exists(config_path):
-            try:
-                with open(config_path, "r") as f:
-                    for line in f:
-                        line = line.strip()
-                        if not line or line.startswith("#") or "=" not in line:
-                            continue
-
-                        key, value = line.split("=", 1)
-                        key = key.strip().upper()
-                        value = value.strip()
-
-                        if key == "DOMOTICZ_HOST":
-                            self.domoticz_host = value
-                        elif key == "DOMOTICZ_PORT":
-                            self.domoticz_port = value
-                        elif key == "REFRESH_DAY":
-                            self.dayInterval = int(value)
-                        elif key == "REFRESH_NIGHT":
-                            self.nightInterval = int(value)
-                        elif key == "SUNRISE_DELAY":
-                            self.sunriseDelay = int(value)
-                        elif key == "SUNSET_DELAY":
-                            self.sunsetDelay = int(value)
-                Domoticz.Debug(f"config.txt reloaded: {today}")
-            except Exception as e:
-                Domoticz.Error(f"Error with reloading config.txt: {e}")
+        self.load_config_txt(log=False)
 
         # === 2. Sunrise/sunset ophalen ===
         try:
@@ -339,8 +271,8 @@ class BasePlugin:
         self.last_daily_refresh = today
         Domoticz.Log(
             f"Daily refresh: host={self.domoticz_host}, port={self.domoticz_port}, "
-            f"dayInterval={self.dayInterval}s, nightInterval={self.nightInterval}s, "
-            f"sunriseDelay={self.sunriseDelay}m, sunsetDelay={self.sunsetDelay}m, "
+            f"Day Interval={self.dayInterval}s, Night Interval={self.nightInterval}s, "
+            f"Sunrise Delay={self.sunriseDelay}m, Sunset Delay={self.sunsetDelay}m, "
             f"Temp interval: {self.temp_delay}s for {self.temp_time // 60}m"
         )
         Domoticz.Log(f"Daily refresh: New setting sunrise={self.last_sunrise} sunset={self.last_sunset}")
@@ -351,6 +283,7 @@ class BasePlugin:
 
     def onCommand(self, DeviceId, Unit, Command, Level, Hue):
         Domoticz.Debug(f"onCommand: DeviceId: {DeviceId}, Unit: {Unit}, Command: {Command}, Level: {Level}, Hue: {Hue}")
+        self.actions_serialized = []
         commands_serialized = []
         action = {}
         commands = {}
@@ -410,7 +343,7 @@ class BasePlugin:
             self.tahoma.send_command(self.command_data)
             self.temp_interval_end = time.time() + self.temp_time
             self.runCounter = 0
-            Domoticz.Log(f"Fast poling: TEMP_DELAY={self.temp_delay}, TEMP_TIME={self.temp_time}")
+            #Domoticz.Log(f"Fast poling: TEMP_DELAY={self.temp_delay}, TEMP_TIME={self.temp_time}")
 
         except (exceptions.TooManyRetries,
                 exceptions.FailureWithErrorCode,
@@ -448,38 +381,28 @@ class BasePlugin:
 
         if sunrise - self.sunriseDelay <= now_minutes < sunset + self.sunsetDelay:
             standard_interval = self.dayInterval
-            status_label = "Day"
+            status_label = "DAY-MODE"
         else:
             standard_interval = self.nightInterval
-            status_label = "Night"
+            status_label = "NIGHT-MODE"
 
         # 3. Check of de TIJDELIJKE interval (10s) nog actief is
         if time.time() < self.temp_interval_end:
             interval = self.temp_delay
             if not hasattr(self, '_temp_log_active') or not self._temp_log_active:
                 remaining = int(self.temp_interval_end - time.time())
-                Domoticz.Status(f"Somfy: Action detected! Fast polling (10s) active for the next {remaining}s")
+                Domoticz.Status(f"Action detected! Fast polling (10s) active for the next {remaining}s")
                 self._temp_log_active = True
         else:
             interval = standard_interval
             if hasattr(self, '_temp_log_active') and self._temp_log_active:
-                Domoticz.Status(f"Somfy: Fast polling ended. Returning to standard interval ({interval}s)")
+                Domoticz.Status(f"Fast polling ended. Returning to standard interval ({interval}s)")
                 self._temp_log_active = False
 
         # 4. Alleen loggen als er iets wezenlijks verandert
         if not hasattr(self, 'last_interval'): self.last_interval = None
         
-        changed = False
-        if self.last_sunrise != sunrise_str or self.last_sunset != sunset_str or self.last_interval != interval:
-            changed = True
-            self.last_sunrise = sunrise_str
-            self.last_sunset = sunset_str
-            self.last_interval = interval
-
-        if changed or not hasattr(self, 'last_logged'):
-            self.last_logged = True
-            # Gebruik hier now_dt (die we bovenaan hebben gedefinieerd)
-            Domoticz.Log(f"Somfy Status: {status_label}, Interval: {interval}s, Sunrise: {sunrise_str}, Sunset: {sunset_str}")
+        self.log_changes(interval, sunrise_str, sunset_str, status_label)
 
         # 5. Poll Somfy box als counter op nul staat
         if self.runCounter <= 0 or self.heartbeat:
@@ -492,7 +415,7 @@ class BasePlugin:
                 except Exception as exp:
                     err_now = time.time()
                     if not hasattr(self, 'last_connection_error_time') or (err_now - self.last_connection_error_time > 60):
-                        Domoticz.Error(f"Somfy: Connection error: {str(exp)[:50]}")
+                        Domoticz.Error(f"Connection error: {str(exp)[:50]}")
                         self.last_connection_error_time = err_now
 
             # Reset runCounter en heartbeat éénmalig onderaan het blok
@@ -519,7 +442,7 @@ class BasePlugin:
             if (dataset["deviceURL"].startswith("io://")):
                 dev = dataset["deviceURL"]
 #                deviceClassTrig = dataset["deviceClass"]
-#BETERE OPTIE	deviceClassTrig = dataset.get("deviceClass")
+                deviceClassTrig = dataset.get("deviceClass")
                 level = 0
                 status_num = 0
                 status = None
@@ -730,7 +653,77 @@ class BasePlugin:
         setConfigItem(Key="patchVersion", Value=patch)
         setConfigItem(Key="plugin version", Value="{0}.{1}.{2}".format(major, minor, patch))
 
-        
+    def load_config_txt(self, log=False):
+        config_path = os.path.join(os.path.dirname(__file__), "config.txt")
+        if not os.path.exists(config_path):
+            if log:
+                Domoticz.Status("config.txt not found, using defaults")
+            return
+
+        try:
+            with open(config_path, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+
+                    key, value = line.split("=", 1)
+                    key = key.strip().upper()
+                    value = value.strip()
+
+                    if key == "DOMOTICZ_HOST":
+                        self.domoticz_host = value
+                    elif key == "DOMOTICZ_PORT":
+                        self.domoticz_port = value
+                    elif key == "REFRESH_DAY":
+                        self.dayInterval = int(value)
+                    elif key == "REFRESH_NIGHT":
+                        self.nightInterval = int(value)
+                    elif key == "SUNRISE_DELAY":
+                        self.sunriseDelay = int(value)
+                    elif key == "SUNSET_DELAY":
+                        self.sunsetDelay = int(value)
+                    elif key == "TEMP_DELAY":
+                        self.temp_delay = int(value)
+                    elif key == "TEMP_TIME":
+                        self.temp_time = int(value)
+
+            if log:
+                Domoticz.Log(
+                    f"config.txt loaded: "
+                    f"Host={self.domoticz_host}:{self.domoticz_port}, "
+                    f"Day={self.dayInterval}s Night={self.nightInterval}s, "
+                    f"SunriseDelay={self.sunriseDelay}m SunsetDelay={self.sunsetDelay}m, "
+                    f"Temp={self.temp_delay}s for {self.temp_time // 60}m"
+                )
+
+        except Exception as e:
+            Domoticz.Error(f"Error reading config.txt: {e}")
+
+    def log_changes(self, interval, sunrise_str, sunset_str, status_label):
+        """Logs changes in interval, sunrise, and sunset, only if they differ from last known values."""
+    
+        # Detect changes
+        interval_changed = (getattr(self, 'last_interval', None) != interval)
+        sunrise_changed  = (getattr(self, 'last_sunrise', None) != sunrise_str)
+        sunset_changed   = (getattr(self, 'last_sunset', None) != sunset_str)
+
+        # Log changes individually
+        if interval_changed:
+            Domoticz.Log(f"Polling interval changed: new interval = {interval}s")
+
+        if sunrise_changed:
+            Domoticz.Log(f"Sunrise updated ({status_label}): {getattr(self, 'last_sunrise', 'N/A')} ? {sunrise_str}")
+
+        if sunset_changed:
+            Domoticz.Log(f"Sunset updated ({status_label}): {getattr(self, 'last_sunset', 'N/A')} ? {sunset_str}")
+
+        # Update last-known values
+        self.last_interval = interval
+        self.last_sunrise  = sunrise_str
+        self.last_sunset   = sunset_str
+
+
 global _plugin
 _plugin = BasePlugin()
 

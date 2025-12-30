@@ -5,10 +5,10 @@
 # 
 # All credits for the plugin are for Nonolk, who is the origin plugin creator
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="4.6.0" externallink="https://github.com/MadPatrick/somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.0.0" externallink="https://github.com/MadPatrick/somfy">
     <description>
         <br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
-        Version: 4.6.0
+        Version: 5.0.0
         <br/>This plugin connects to the Tahoma or Connexoon box either via the web API or via local access.
         <br/>Various devices are supported (RollerShutter, LightSensor, Screen, Awning, Window, VenetianBlind, etc.).
         <br/>For new devices, please raise a ticket at the Github link above.
@@ -80,12 +80,12 @@ import sys
 import logging
 import exceptions
 import time
+import datetime
 import tahoma
 import os
 from tahoma_local import SomfyBox
 import utils
 import requests
-import datetime
 import urllib.request
 
 class BasePlugin:
@@ -108,7 +108,7 @@ class BasePlugin:
         self.last_daily_refresh = None
         self.last_sunrise = None
         self.last_sunset = None
-
+        self.temp_interval_end = 0  # Houdt versnelling bij
     
     def onStart(self):
 
@@ -206,7 +206,7 @@ class BasePlugin:
         pin = Parameters["Address"]
         port = int(Parameters["Port"])
         
-        logging.debug("starting to log in with mode " + Parameters["Mode4"])
+        Domoticz.Debug("starting to log in with mode " + Parameters["Mode4"])
         if Parameters["Mode4"] == "Local":
             self.tahoma = SomfyBox(pin, port)
             self.local = True
@@ -222,23 +222,24 @@ class BasePlugin:
         
         if self.tahoma.logged_in:
             if self.local:
-                logging.debug("check if token stored in configuration")
+                Domoticz.Debug("check if token stored in configuration")
                 confToken = getConfigItem('token', '0')
                 if confToken == '0' or Parameters["Mode1"] == "True":
-                    logging.debug("no token found, generate a new one")
+                    Domoticz.Debug("no token found, generate a new one")
                     self.tahoma.generate_token(pin)
                     self.tahoma.activate_token(pin,self.tahoma.token)
                     #store token for later use (not generate one at each start)
                     setConfigItem('token', self.tahoma.token)
                     Parameters["Mode1"] = "False"
                 else:
-                    logging.debug("found token in configuration: "+str(confToken))
+                    Domoticz.Debug("found token in configuration: "+str(confToken))
                     self.tahoma.token = confToken
                 self.tahoma.register_listener()
             else:
                 self.tahoma.register_listener()
 
-        if self.tahoma.logged_in and firstFree() < 249:
+        free_unit = firstFree()
+        if self.tahoma.logged_in and free_unit is not None and free_unit < 249:
             filtered_devices = self.tahoma.get_devices()
             self.create_devices(filtered_devices)
             self.update_devices_status(utils.filter_states(filtered_devices))
@@ -249,7 +250,7 @@ class BasePlugin:
         self.heartbeat = False
 
     def onConnect(self, Connection, Status, Description):
-        logging.debug("onConnect: Connection: '"+str(Connection)+"', Status: '"+str(Status)+"', Description: '"+str(Description)+"' self.tahoma.logged_in: '"+str(self.tahoma.logged_in)+"'")
+        Domoticz.Debug("onConnect: Connection: '"+str(Connection)+"', Status: '"+str(Status)+"', Description: '"+str(Description)+"' self.tahoma.logged_in: '"+str(self.tahoma.logged_in)+"'")
         if (Status == 0 and not self.tahoma.logged_in):
           self.tahoma.tahoma_login(str(Parameters["Username"]), str(Parameters["Password"]))
         elif (self.cookie and self.tahoma.logged_in and (not self.command)):
@@ -297,7 +298,7 @@ class BasePlugin:
                             self.sunriseDelay = int(value)
                         elif key == "SUNSET_DELAY":
                             self.sunsetDelay = int(value)
-                logging.debug(f"config.txt reloaded: {today}")
+                Domoticz.Debug(f"config.txt reloaded: {today}")
             except Exception as e:
                 Domoticz.Error(f"Error with reloading config.txt: {e}")
 
@@ -310,7 +311,7 @@ class BasePlugin:
                 sunset_full = data.get("Sunset", "22:00:00")
                 self.last_sunrise = sunrise_full[:5]
                 self.last_sunset = sunset_full[:5]
-            logging.debug(f"Sunrise/sunset ververst: {self.last_sunrise} / {self.last_sunset}")
+            Domoticz.Debug(f"Sunrise/sunset ververst: {self.last_sunrise} / {self.last_sunset}")
         except Exception as e:
             Domoticz.Error(f"sunrise/sunset couldn't be loaded: {e}")
             if not self.last_sunrise:
@@ -328,87 +329,76 @@ class BasePlugin:
         Domoticz.Debug("onMessage data: "+str(Data))
 
     def onCommand(self, DeviceId, Unit, Command, Level, Hue):
-        logging.debug("onCommand: DeviceId: '"+str(DeviceId)+"' Unit: '"+str(Unit)+"', Command: '"+str(Command)+"', Level: '"+str(Level)+"', Hue: '"+str(Hue)+"'")
+        Domoticz.Debug(f"onCommand: DeviceId: {DeviceId}, Unit: {Unit}, Command: {Command}, Level: {Level}, Hue: {Hue}")
         commands_serialized = []
         action = {}
         commands = {}
         params = []
-        
+
+        # Bepaal commando op basis van unit
         if Unit == 1:
-            # unit 1 used for up/down movement
-            if (str(Command) == "Off" or str(Command) == "Close"):
-                commands["name"] = "close"   
-            elif (str(Command) == "On" or str(Command) == "Open"):
+            if Command in ("Off", "Close"):
+                commands["name"] = "close"
+            elif Command in ("On", "Open"):
                 commands["name"] = "open"
-            elif (str(Command) == "Stop"):
+            elif Command == "Stop":
                 commands["name"] = "stop"
-            elif ("Set Level" in str(Command)):
+            elif "Set Level" in Command:
                 commands["name"] = "setClosure"
-                tmp = max(100 - int(Level), 0) #invert open/close percentage
-                #tmp = max(int(Level), 0)
+                tmp = max(100 - int(Level), 0)  # invert open/close
                 params.append(tmp)
-                #params.append(int(Level))
                 commands["parameters"] = params
         elif Unit == 2:
-            # unit 2 used for orientation in venetian blinds
-            if ("Set Level" in str(Command)):
+            if "Set Level" in Command:
                 commands["name"] = "setOrientation"
-                tmp = max(100 - int(Level), 1) #orientation does not accept 0
-                #tmp = max(int(Level), 1) #orientation does not accept 0
+                tmp = max(100 - int(Level), 1)  # orientation does not accept 0
                 params.append(tmp)
                 commands["parameters"] = params
             else:
-                logging.error("command "+str(Command)+" not supported")
+                Domoticz.Error(f"Command {Command} not supported for unit 2")
                 return False
         else:
-            logging.error("unit not supported")
+            Domoticz.Error(f"Unit {Unit} not supported")
             return False
 
+        # Zet actie klaar
         commands_serialized.append(commands)
         action["deviceURL"] = DeviceId
         action["commands"] = commands_serialized
         self.actions_serialized.append(action)
-        logging.debug("preparing command: # commands: "+str(len(commands)))
-        logging.debug("preparing command: # actions_serialized: "+str(len(self.actions_serialized)))
-        data = {"label": "Domoticz - "+Devices[DeviceId].Units[Unit].Name+" - "+commands["name"], "actions": self.actions_serialized}
+
+        data = {
+            "label": f"Domoticz - {Devices[DeviceId].Units[Unit].Name} - {commands['name']}",
+            "actions": self.actions_serialized
+        }
         if self.local:
             self.command_data = data
         else:
             self.command_data = json.dumps(data, indent=None, sort_keys=True)
-        logging.debug("preparing command: json data: "+str(self.command_data))
 
-        if (not self.tahoma.logged_in):
-            logging.info("Not logged in, must connect")
+        # Login indien nodig
+        if not self.tahoma.logged_in:
+            Domoticz.Log("Not logged in, trying to login")
             self.command = True
             self.tahoma.tahoma_login(str(Parameters["Username"]), str(Parameters["Password"]))
             if self.tahoma.logged_in:
                 self.tahoma.register_listener()
 
-        event_list = []
+        # Stuur commando
         try:
             self.tahoma.send_command(self.command_data)
-        except (exceptions.TooManyRetries, exceptions.FailureWithErrorCode, exceptions.FailureWithoutErrorCode) as exp:
-            Domoticz.Error("Failed to send command: " + str(exp))
-            logging.error("Failed to send command: " + str(exp))
+            self.temp_interval_end = time.time() + 60
+            self.runCounter = 0
+            Domoticz.Status("Somfy: Command sent. Fast polling (10s) started.")
+        except (exceptions.TooManyRetries,
+                exceptions.FailureWithErrorCode,
+                exceptions.FailureWithoutErrorCode,
+                Exception) as exp:
+            Domoticz.Error(f"Somfy: Failed to send command: {exp}")
             if not self.local:
-                #clear list of (failed) actions for Connexoon
                 self.actions_serialized = []
             return False
-        self.actions_serialized = []
-        if not self.tahoma.listener.valid:
-            self.tahoma.register_listener()
-        try:
-            event_list = self.tahoma.get_events()
-        except (exceptions.TooManyRetries, exceptions.FailureWithErrorCode, exceptions.FailureWithoutErrorCode) as exp:
-            Domoticz.Error("Failed to get events: " + str(exp))
-            logging.error("Failed to get events: " + str(exp))
-            return False
-        if event_list is not None and len(event_list) > 0:
-            self.update_devices_status(event_list)
-            self.heartbeat = False
-        if self.tahoma.logged_in == False:
-            #in case the send_command detected an error due to not logged in: force a heartbeat to get logged in again
-            self.heartbeat = True
+
         return True
 
     def onDisconnect(self, Connection):
@@ -420,12 +410,13 @@ class BasePlugin:
         if not self.enabled:
             return False
 
-        now = datetime.datetime.now()
-        now_minutes = now.hour * 60 + now.minute
-        today = datetime.date.today()
+        now_dt = datetime.datetime.now()
+        now_minutes = now_dt.hour * 60 + now_dt.minute
 
+        # 1. Dagelijkse data verversen (config & zon tijden)
         self.refresh_daily_data()
-        # Gebruik opgeslagen sunrise/sunset
+        
+        # 2. Bepaal de standaard interval op basis van de tijd (Dag/Nacht)
         sunrise_str = self.last_sunrise or "06:00"
         sunset_str = self.last_sunset or "22:00"
         sr_hour, sr_min = map(int, sunrise_str.split(':'))
@@ -433,117 +424,72 @@ class BasePlugin:
         sunrise = sr_hour * 60 + sr_min
         sunset = ss_hour * 60 + ss_min
 
-        # Bepaal interval day/night
         if sunrise - self.sunriseDelay <= now_minutes < sunset + self.sunsetDelay:
-            interval = self.dayInterval
+            standard_interval = self.dayInterval
+            status_label = "Day"
         else:
-            interval = self.nightInterval
+            standard_interval = self.nightInterval
+            status_label = "Night"
 
-        # Bepaal dag/nacht interval
-        if sunrise - self.sunriseDelay <= now_minutes < sunset + self.sunsetDelay:
-            interval = self.dayInterval
+        # 3. Check of de TIJDELIJKE interval (10s) nog actief is
+        if time.time() < self.temp_interval_end:
+            interval = 10
+            if not hasattr(self, '_temp_log_active') or not self._temp_log_active:
+                remaining = int(self.temp_interval_end - time.time())
+                Domoticz.Status(f"Somfy: Action detected! Fast polling (10s) active for the next {remaining}s")
+                self._temp_log_active = True
         else:
-            interval = self.nightInterval
+            interval = standard_interval
+            if hasattr(self, '_temp_log_active') and self._temp_log_active:
+                Domoticz.Status(f"Somfy: Fast polling ended. Returning to standard interval ({interval}s)")
+                self._temp_log_active = False
 
-        # Alleen loggen als sunrise, sunset of interval veranderd
-        if not hasattr(self, 'last_sunrise'):
-            self.last_sunrise = None
-        if not hasattr(self, 'last_sunset'):
-            self.last_sunset = None
-        if not hasattr(self, 'last_interval'):
-            self.last_interval = None
-
+        # 4. Alleen loggen als er iets wezenlijks verandert
+        if not hasattr(self, 'last_interval'): self.last_interval = None
+        
         changed = False
-        if self.last_sunrise != sunrise_str or self.last_sunset != sunset_str:
+        if self.last_sunrise != sunrise_str or self.last_sunset != sunset_str or self.last_interval != interval:
             changed = True
             self.last_sunrise = sunrise_str
             self.last_sunset = sunset_str
-
-        if self.last_interval != interval:
-            changed = True
             self.last_interval = interval
 
-        # Eerste run altijd loggen
-        if not hasattr(self, 'last_logged'):
-            self.last_logged = False
-
-        if not self.last_logged:
-            changed = True
+        if changed or not hasattr(self, 'last_logged'):
             self.last_logged = True
+            # Gebruik hier now_dt (die we bovenaan hebben gedefinieerd)
+            Domoticz.Log(f"Somfy Status: {status_label}, Interval: {interval}s, Sunrise: {sunrise_str}, Sunset: {sunset_str}")
 
-        if changed:
-            Domoticz.Log(f"Time={now.strftime('%H:%M')} sunrise={sunrise_str} sunset={sunset_str}")
-            status = "Day" if interval == self.dayInterval else "Night"
-            now_dt = datetime.datetime.now()
-
-            if status == "Day":
-                # Day eindigt bij sunset + 60 min
-                ss_hour = int(sunset_str[:2])
-                ss_minute = int(sunset_str[3:])
-                next_switch_dt = now_dt.replace(hour=ss_hour, minute=ss_minute, second=0)
-                next_switch_dt += datetime.timedelta(minutes=self.sunsetDelay) 
-                if next_switch_dt < now_dt:
-                    next_switch_dt += datetime.timedelta(days=1)
-            else:  # Night
-                # Night eindigt bij sunrise - 30 min
-                sr_hour = int(sunrise_str[:2])
-                sr_minute = int(sunrise_str[3:])
-                next_switch_dt = now_dt.replace(hour=sr_hour, minute=sr_minute, second=0)
-                next_switch_dt -= datetime.timedelta(minutes=self.sunriseDelay)
-                if next_switch_dt < now_dt:
-                    next_switch_dt += datetime.timedelta(days=1)
-
-            Domoticz.Log(f"Refresh interval={interval} Seconds ({status}) until {next_switch_dt.strftime('%H:%M')}")
-
-        # Poll Somfy box als counter op nul staat of heartbeat trigger actief
+        # 5. Poll Somfy box als counter op nul staat
         if self.runCounter <= 0 or self.heartbeat:
             if self.local or (self.tahoma.logged_in and not self.tahoma.startup):
                 try:
                     filtered_devices = self.tahoma.get_devices()
                     self.update_devices_status(utils.filter_states(filtered_devices))
-
-                    # Reset de "laatste fout-tijd" als het nu wel lukt
                     if hasattr(self, 'last_connection_error_time'):
                         del self.last_connection_error_time
+                except Exception as exp:
+                    err_now = time.time()
+                    if not hasattr(self, 'last_connection_error_time') or (err_now - self.last_connection_error_time > 60):
+                        Domoticz.Error(f"Somfy: Connection error: {str(exp)[:50]}")
+                        self.last_connection_error_time = err_now
 
-                except (exceptions.TooManyRetries, exceptions.FailureWithErrorCode,
-                        exceptions.FailureWithoutErrorCode, json.decoder.JSONDecodeError,
-                        requests.exceptions.ConnectionError) as exp:
-                    now = time.time()
-                    if not hasattr(self, 'last_connection_error_time') or (now - self.last_connection_error_time > 60):
-                        Domoticz.Error("Somfy: Unable to connect to the local box")
-                        Domoticz.Error("This can occur during temporary internet or network interruptions")
-                        Domoticz.Error("Next message in 1 minute (silent in between)")
-                        # Optioneel: de technische fout kort weergeven (zonder hele stack)
-                        short_error = str(exp).split('Caused by')[0].strip()
-                        Domoticz.Error(f"   Fout: {short_error}")
-
-                        self.last_connection_error_time = now
-
-                except exceptions.NoListenerFailure as exp:
-                    Domoticz.Error("Failed to request data: " + str(exp))
-                    self.tahoma.register_listener()
-
-            # reset runCounter naar juiste interval (altijd, ook als poll mislukt)
+            # Reset runCounter en heartbeat éénmalig onderaan het blok
             self.runCounter = interval
             self.heartbeat = False
 
         return True
 
-        # fallback
-        return "06:00", "22:00"
-
     def update_devices_status(self, Updated_devices):
-        logging.debug("updating device status self.tahoma.startup = "+str(self.tahoma.startup)+" on num datasets: "+str(len(Updated_devices)))
-        logging.debug("updating device status on data: "+str(Updated_devices))
+        Domoticz.Debug("updating device status self.tahoma.startup = "+str(self.tahoma.startup)+" on num datasets: "+str(len(Updated_devices)))
+        Domoticz.Debug("updating device status on data: "+str(Updated_devices))
         if self.local:
             eventList = utils.filter_events(Updated_devices)
         else:
             eventList = Updated_devices
         num_updates = 0
-        logging.debug("checking device updates for "+str(len(eventList))+" filtered events")
+        Domoticz.Debug("checking device updates for "+str(len(eventList))+" filtered events")
         for dataset in eventList:
-            logging.debug("checking dataset: "+str(dataset))
+            Domoticz.Debug("checking dataset: "+str(dataset))
             if dataset["deviceURL"] not in Devices:
                 Domoticz.Error("device not found for URL: "+str(dataset["deviceURL"]))
                 logging.error("device not found for URL: "+str(dataset["deviceURL"])+" while updating states")
@@ -560,7 +506,7 @@ class BasePlugin:
 
                 states = dataset["deviceStates"]
                 if not (dataset["name"] == "DeviceStateChangedEvent" or dataset["name"] == "DeviceState"):
-                    logging.debug("update_devices_status: dataset['name'] != DeviceStateChangedEvent: "+str(dataset["name"])+": breaking out")
+                    Domoticz.Debug("update_devices_status: dataset['name'] != DeviceStateChangedEvent: "+str(dataset["name"])+": breaking out")
                     continue #dataset does not contain correct event, skip to next dataset
 
                 # === Determine device class safely (solution 2) ===
@@ -604,7 +550,7 @@ class BasePlugin:
                         lumlevel = state["value"]
                         lumstatus_l = True
                     
-                    logging.debug("checking for update on state[name]: '" +state["name"]+"' with status_num = '"+str(status_num)+ "' for device: '"+dev+"'")
+                    Domoticz.Debug("checking for update on state[name]: '" +state["name"]+"' with status_num = '"+str(status_num)+ "' for device: '"+dev+"'")
                     if status_num > 0:
                         if (Devices[dev].Units[status_num].sValue):
                             int_level = int(Devices[dev].Units[status_num].sValue)
@@ -666,11 +612,11 @@ class BasePlugin:
                 can_continue = self.updateToEx()
         elif int(MiConf) < int(MiCurrent):
             Domoticz.Debug("Minor version upgrade: {0} -> {1}".format(MiConf,MiCurrent))
-            logging.debug("Minor version upgrade: {0} -> {1}".format(MiConf,MiCurrent))
+            logging.DEBUG("Minor version upgrade: {0} -> {1}".format(MiConf,MiCurrent))
             #add code to perform MINOR upgrades
         elif int(PaConf) < int(PaCurrent):
             Domoticz.Debug("Patch version upgrade: {0} -> {1}".format(PaConf,PaCurrent))
-            logging.debug("Patch version upgrade: {0} -> {1}".format(PaConf,PaCurrent))
+            logging.DEBUG("Patch version upgrade: {0} -> {1}".format(PaConf,PaCurrent))
             #add code to perform PATCH upgrades, if any
         if ConfVersion != version and can_continue:
             #store new version info
@@ -756,7 +702,7 @@ class BasePlugin:
 
     def _setVersion(self, major, minor, patch):
         #set configs
-        logging.debug("Setting version to {0}.{1}.{2}".format(major, minor, patch))
+        logging.DEBUG("Setting version to {0}.{1}.{2}".format(major, minor, patch))
         setConfigItem(Key="MajorVersion", Value=major)
         setConfigItem(Key="MinorVersion", Value=minor)
         setConfigItem(Key="patchVersion", Value=patch)

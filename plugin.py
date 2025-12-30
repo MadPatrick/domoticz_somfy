@@ -26,12 +26,13 @@
         <param field="Mode2" label="Refresh interval (day;night)" width="100px" default="20;900">
             <description>
                 <br/>Enter two numbers separated by a ;  
-                <br/>First for day refresh interval (seconds), second for night refresh interval (seconds)
+                <br/>1st for day refresh polling (seconds), 2nd for night refresh polling (seconds)
             </description>
         </param>
         <param field="Mode3" label="Night Delay" width="200px" default="30;60">
             <description>
-                <br/>Delay for Sunrise and Sunset
+                <br/>Day and Nighmode. When must the refresh be changed
+                <br/>1st for minutes before sunrise, 2nd for minuted after sunset
             </description>
         </param>
         <param field="Mode4" label="Connection" width="100px">
@@ -612,11 +613,11 @@ class BasePlugin:
                 can_continue = self.updateToEx()
         elif int(MiConf) < int(MiCurrent):
             Domoticz.Debug("Minor version upgrade: {0} -> {1}".format(MiConf,MiCurrent))
-            logging.DEBUG("Minor version upgrade: {0} -> {1}".format(MiConf,MiCurrent))
-            #add code to perform MINOR upgrades
+            logging.debug("Minor version upgrade: {0} -> {1}".format(MiConf,MiCurrent))
+
         elif int(PaConf) < int(PaCurrent):
             Domoticz.Debug("Patch version upgrade: {0} -> {1}".format(PaConf,PaCurrent))
-            logging.DEBUG("Patch version upgrade: {0} -> {1}".format(PaConf,PaCurrent))
+            logging.debug("Patch version upgrade: {0} -> {1}".format(PaConf,PaCurrent))
             #add code to perform PATCH upgrades, if any
         if ConfVersion != version and can_continue:
             #store new version info
@@ -702,7 +703,7 @@ class BasePlugin:
 
     def _setVersion(self, major, minor, patch):
         #set configs
-        logging.DEBUG("Setting version to {0}.{1}.{2}".format(major, minor, patch))
+        logging.debug("Setting version to {0}.{1}.{2}".format(major, minor, patch))
         setConfigItem(Key="MajorVersion", Value=major)
         setConfigItem(Key="MinorVersion", Value=minor)
         setConfigItem(Key="patchVersion", Value=patch)

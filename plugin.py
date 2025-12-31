@@ -4,10 +4,10 @@
 # 
 # All credits for the plugin are for Nonolk, who is the origin plugin creator
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.0.0" externallink="https://github.com/MadPatrick/somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.0.2" externallink="https://github.com/MadPatrick/somfy">
     <description>
         <br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
-        Version: 5.0.0
+        Version: 5.0.2
         <br/>This plugin connects to the Tahoma or Connexoon box either via the web API or via local access.
         <br/>Various devices are supported (RollerShutter, LightSensor, Screen, Awning, Window, VenetianBlind, etc.).
         <br/>For new devices, please raise a ticket at the Github link above.
@@ -86,6 +86,7 @@ import time
 import datetime
 import tahoma
 import os
+import math
 from tahoma_local import SomfyBox
 import utils
 import requests
@@ -273,7 +274,7 @@ class BasePlugin:
             f"Daily refresh: host={self.domoticz_host}, port={self.domoticz_port}, "
             f"Day Interval={self.dayInterval}s, Night Interval={self.nightInterval}s, "
             f"Sunrise Delay={self.sunriseDelay}m, Sunset Delay={self.sunsetDelay}m, "
-            f"Temp interval: {self.temp_delay}s for {self.temp_time // 60}m"
+            f"Temp polling: {self.temp_delay}s for {self.temp_time // 60}m"
         )
         Domoticz.Log(f"Daily refresh: New setting sunrise={self.last_sunrise} sunset={self.last_sunset}")
 
@@ -390,7 +391,7 @@ class BasePlugin:
         if time.time() < self.temp_interval_end:
             interval = self.temp_delay
             if not hasattr(self, '_temp_log_active') or not self._temp_log_active:
-                remaining = int(self.temp_interval_end - time.time())
+                remaining = math.ceil(self.temp_interval_end - time.time())
                 Domoticz.Status(f"Action detected! Fast polling (10s) active for the next {remaining}s")
                 self._temp_log_active = True
         else:
@@ -427,106 +428,89 @@ class BasePlugin:
     def update_devices_status(self, Updated_devices):
         Domoticz.Debug("updating device status self.tahoma.startup = "+str(self.tahoma.startup)+" on num datasets: "+str(len(Updated_devices)))
         Domoticz.Debug("updating device status on data: "+str(Updated_devices))
+
         if self.local:
             eventList = utils.filter_events(Updated_devices)
         else:
             eventList = Updated_devices
+
         num_updates = 0
-        Domoticz.Debug("checking device updates for "+str(len(eventList))+" filtered events")
+
         for dataset in eventList:
             Domoticz.Debug("checking dataset: "+str(dataset))
             if dataset["deviceURL"] not in Devices:
                 Domoticz.Error("device not found for URL: "+str(dataset["deviceURL"]))
                 logging.error("device not found for URL: "+str(dataset["deviceURL"])+" while updating states")
-                continue #no deviceURL found that matches to domoticz Devices, skip to next dataset
-            if (dataset["deviceURL"].startswith("io://")):
+                continue  # skip to next dataset
+
+            if dataset["deviceURL"].startswith("io://"):
                 dev = dataset["deviceURL"]
-#                deviceClassTrig = dataset["deviceClass"]
-                deviceClassTrig = dataset.get("deviceClass")
-                level = 0
-                status_num = 0
-                status = None
-                nValue = 0
-                sValue = "0"
+
+                deviceClassTrig = getConfigItem(f"class_{dataset['deviceURL']}", "Unknown")
 
                 states = dataset["deviceStates"]
-                if not (dataset["name"] == "DeviceStateChangedEvent" or dataset["name"] == "DeviceState"):
-                    Domoticz.Debug("update_devices_status: dataset['name'] != DeviceStateChangedEvent: "+str(dataset["name"])+": breaking out")
-                    continue #dataset does not contain correct event, skip to next dataset
+                if dataset["name"] not in ("DeviceStateChangedEvent", "DeviceState"):
+                    Domoticz.Debug("update_devices_status: dataset['name'] not a valid event: "+str(dataset["name"]))
+                    continue
 
-                # === Determine device class safely (solution 2) ===
-                deviceClassTrig = getConfigItem(
-                    f"class_{dataset['deviceURL']}",
-                    None
-                )
-
-                if not deviceClassTrig:
-                    try:
-                        deviceClassTrig = dataset["definition"]["uiClass"]
-                        setConfigItem(
-                            f"class_{dataset['deviceURL']}",
-                            deviceClassTrig
-                        )
-                        Domoticz.Log(
-                            f"Stored device class for {dataset['deviceURL']}: {deviceClassTrig}"
-                        )
-                    except Exception:
-                        deviceClassTrig = "Unknown"
-
+                lumstatus_l = False
+                lumlevel = None
 
                 for state in states:
                     status_num = 0
-                    lumstatus_l = False
+                    level = 0
+                    nValue = 0
+                    sValue = "0"
 
+                    # Core closure / deployment handling
                     if state["name"] in ("core:ClosureState", "core:DeploymentState"):
                         level = int(state["value"])
-
                         if deviceClassTrig != "Awning":
                             level = 100 - level
-
                         status_num = 1
-                      
-                    if ((state["name"] == "core:SlateOrientationState")):
+
+                    # Venetian blinds / jaloezieën
+                    elif state["name"] == "core:SlateOrientationState":
                         level = int(state["value"])
-                        #level = 100 - level 
                         status_num = 2
 
-                    if (state["name"] == "core:LuminanceState"):
-                        lumlevel = state["value"]
+                    # Luminance / lichtsensor
+                    elif state["name"] == "core:LuminanceState":
+                        lumlevel = int(state["value"])
                         lumstatus_l = True
-                    
-                    Domoticz.Debug("checking for update on state[name]: '" +state["name"]+"' with status_num = '"+str(status_num)+ "' for device: '"+dev+"'")
+
+                    # Update Domoticz device indien status veranderd
                     if status_num > 0:
-                        if (Devices[dev].Units[status_num].sValue):
-                            int_level = int(Devices[dev].Units[status_num].sValue)
-                        else:
-                            int_level = 0
-                        if (level != int_level):
+                        current_sValue = Devices[dev].Units[status_num].sValue
+                        int_level = int(current_sValue) if current_sValue else 0
+
+                        if level != int_level:
                             Domoticz.Status("Updating device : "+Devices[dev].Units[status_num].Name)
                             logging.info("Updating device : "+Devices[dev].Units[status_num].Name)
-                            if (level == 0):
+
+                            if level == 0:
                                 nValue = 0
                                 sValue = "0"
-                            if (level == 100):
+                            elif level == 100:
                                 nValue = 1
                                 sValue = "100"
-                            if (level != 0 and level != 100):
+                            else:
                                 nValue = 2
                                 sValue = str(level)
-                            UpdateDevice(dev, status_num, nValue,sValue)
-                    if lumstatus_l: #assuming for now that the luminance sensor is always a single unit in a device
-                        if (Devices[dev].Units[1].sValue):
-                            int_lumlevel = Devices[dev].Units[1].sValue
-                        else:
-                            int_lumlevel = 0
-                        if (lumlevel != int_lumlevel):
-                            Domoticz.Status("Updating device : "+Devices[dev].Units[1].Name)
-                            logging.info("Updating device : "+Devices[dev].Units[1].Name)
-                            if (lumlevel != 0 and lumlevel != 120000):
-                                nValue = 3
-                                sValue = str(lumlevel)
-                                UpdateDevice(dev, 1, nValue,sValue)
-                    num_updates += 1
+
+                            UpdateDevice(dev, status_num, nValue, sValue)
+                            num_updates += 1
+
+                # Update luminance if applicable
+                if lumstatus_l and lumlevel is not None:
+                    current_lum = Devices[dev].Units[1].sValue
+                    int_lumlevel = int(current_lum) if current_lum else 0
+
+                    if lumlevel != int_lumlevel:
+                        Domoticz.Status("Updating device : "+Devices[dev].Units[1].Name)
+                        logging.info("Updating device : "+Devices[dev].Units[1].Name)
+                        UpdateDevice(dev, 1, 3, str(lumlevel))
+                        num_updates += 1
 
         return num_updates
 

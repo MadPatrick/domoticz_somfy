@@ -7,7 +7,11 @@ import time
 import json
 import utils
 import listener
-import DomoticzEx as Domoticz
+
+try:
+    import DomoticzEx as Domoticz
+except ImportError:
+    import fakeDomoticz as Domoticz
 
 class Tahoma:
     """class to interface with tahoma web API"""

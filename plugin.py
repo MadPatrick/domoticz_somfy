@@ -436,10 +436,12 @@ class BasePlugin:
         Domoticz.Debug("checking device updates for "+str(len(eventList))+" filtered events")
         for dataset in eventList:
             Domoticz.Debug("checking dataset: "+str(dataset))
+
             if dataset["deviceURL"] not in Devices:
                 Domoticz.Error("device not found for URL: "+str(dataset["deviceURL"]))
                 logging.error("device not found for URL: "+str(dataset["deviceURL"])+" while updating states")
                 continue #no deviceURL found that matches to domoticz Devices, skip to next dataset
+
             if (dataset["deviceURL"].startswith("io://")):
                 dev = dataset["deviceURL"]
 #                deviceClassTrig = dataset["deviceClass"]
@@ -455,27 +457,6 @@ class BasePlugin:
                     Domoticz.Debug("update_devices_status: dataset['name'] != DeviceStateChangedEvent: "+str(dataset["name"])+": breaking out")
                     continue #dataset does not contain correct event, skip to next dataset
 
-                # === Determine device class safely (solution 2) ===
-                deviceClassTrig = getConfigItem(
-                    f"class_{dataset['deviceURL']}",
-                    None
-                )
-
-                if not deviceClassTrig:
-                    try:
-                        deviceClassTrig = dataset["definition"]["uiClass"]
-                        setConfigItem(
-                            f"class_{dataset['deviceURL']}",
-                            deviceClassTrig
-                        )
-                        Domoticz.Log(
-                            f"Stored device class for {dataset['deviceURL']}: {deviceClassTrig}"
-                        )
-                    except Exception:
-                        deviceClassTrig = "Unknown"
-
-
-                status_num = 0
                 lumstatus_l = False
                 level = None
 
@@ -489,6 +470,7 @@ class BasePlugin:
                             level = int(state["value"])
                             level = 100 - level #invert open/close percentage
                             status_num = 1
+
                     elif state["name"] == "core:SlateOrientationState":
                         level = int(state["value"])
                         status_num = 2

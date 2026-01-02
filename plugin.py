@@ -4,10 +4,10 @@
 # 
 # All credits for the plugin are for Nonolk, who is the origin plugin creator
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.1.0" externallink="https://github.com/MadPatrick/somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.1.1" externallink="https://github.com/MadPatrick/somfy">
     <description>
         <br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
-        Version: 5.1.0
+        Version: 5.1.1
         <br/>This plugin connects to the Tahoma or Connexoon box either via the web API or via local access.
         <br/>Various devices are supported (RollerShutter, LightSensor, Screen, Awning, Window, VenetianBlind, etc.).
         <br/>For new devices, please raise a ticket at the Github link above.
@@ -26,15 +26,19 @@
         <param field="Username" label="Username" width="200px" required="true" default=""/>
         <param field="Password" label="Password" width="200px" required="true" default="" password="true"/>
         <param field="Mode2" label="Refresh interval (day;night)" width="100px" default="20;900">
-            <description>
-                <br/>Enter two numbers separated by a ;  
-                <br/>1st for day refresh polling (seconds), 2nd for night refresh polling (seconds)
-            </description>
+        <description>
+        <br/>How often must the devices be polled?
+        <br/>Enter two numbers separated by a semicolon (;)
+        <br/>The first number is for day refresh polling (in seconds), the second is for night refresh polling (in seconds).  
+        <br/>If this parameter is set in config.txt, it will override this setting.
+        </description>
         </param>
         <param field="Mode3" label="Night Delay" width="200px" default="30;60">
             <description>
-                <br/>Day and Nighmode. When must the refresh be changed
-                <br/>1st for minutes before sunrise, 2nd for minuted after sunset
+                <br/>How often must the devices be polled?
+                <br/>Enter two numbers separated by a semicolon (;).
+                <br/>The first number is for day refresh polling (in seconds), the second is for night refresh polling (in seconds).  
+                <br/>If this parameter is set in config.txt, it will override this setting.
             </description>
         </param>
         <param field="Mode4" label="Connection" width="100px">
@@ -167,7 +171,7 @@ class BasePlugin:
             self.nightInterval = int(night_str.strip())
         except Exception as e:
             Domoticz.Error("Invalid Mode2 value, using defaults 20;900: " + str(e))
-            self.dayInterval = 300
+            self.dayInterval = 20
             self.nightInterval = 900
         self.runCounter = self.dayInterval
         Domoticz.Heartbeat(1)
@@ -446,6 +450,7 @@ class BasePlugin:
                 dev = dataset["deviceURL"]
 #                deviceClassTrig = dataset["deviceClass"]
                 deviceClassTrig = dataset.get("deviceClass")
+#                Domoticz.Log("Checkpoint 1 deviceClassTrig : "+str(deviceClassTrig))  #Extra log
                 level = 0
                 status_num = 0
                 status = None
@@ -463,7 +468,9 @@ class BasePlugin:
                 for state in states:
 
                     if ((state["name"] == "core:ClosureState") or (state["name"] == "core:DeploymentState")):
+#                        Domoticz.Log("Checkpoint 2 deviceClassTrig : "+str(deviceClassTrig))  #Extra log
                         if (deviceClassTrig == "Awning"):
+                            Domoticz.Log("Checkpoint 3 deviceClassTrig : "+str(deviceClassTrig))  #Extra log
                             level = int(state["value"]) #Don't invert open/close percentage for an Awning
                             status_num = 1
                         else:

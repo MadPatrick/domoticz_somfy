@@ -2,7 +2,7 @@ import logging
 import exceptions
 import json
 
-stateSet = {"core:ClosureState","core:OpenClosedState","core:LuminanceState"} #list of states that trigger domoticz widget update
+stateSet = {"core:ClosureState","core:OpenClosedState","core:LuminanceState","core:DeploymentState"} #list of states that trigger domoticz widget update
 
 def filter_devices(Data):
     logging.debug("start filter devices")
@@ -56,10 +56,12 @@ def filter_states(Data):
     logging.debug("start filter states")
     filtered_states = list()
     deviceURL = ""
-    
+    deviceClass = ""
+
     for device in Data:
         stateList = list()
         deviceURL = device["deviceURL"]
+        deviceClass = device["definition"]["uiClass"]
         if not "states" in device:
             continue
         for state in device["states"]:
@@ -68,8 +70,10 @@ def filter_states(Data):
         if len(stateList)>0:
             stateToAdd = {"deviceURL":deviceURL, 
                 "deviceStates":stateList,
+                "deviceClass":deviceClass,
                 "name":"DeviceState"}
             filtered_states.append(stateToAdd)
+        logging.debug("Device state: "+str(filtered_states))
     return filtered_states
 
 def handle_response(response, action):

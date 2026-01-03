@@ -484,7 +484,7 @@ class BasePlugin:
                     if ((state["name"] == "core:ClosureState") or (state["name"] == "core:DeploymentState")):
 #                        Domoticz.Log("Checkpoint 2 deviceClassTrig : "+str(deviceClassTrig))  #Extra log
                         if (deviceClassTrig == "Awning"):
-                            Domoticz.Log("Checkpoint 3 deviceClassTrig : "+str(deviceClassTrig))  #Extra log
+#                            Domoticz.Log("Checkpoint 3 deviceClassTrig : "+str(deviceClassTrig))  #Extra log
                             level = int(state["value"]) #Don't invert open/close percentage for an Awning
                             status_num = 1
                         else:

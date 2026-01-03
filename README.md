@@ -159,21 +159,19 @@ Invalid or missing values will fall back to default settings
 📌 Values from config.txt override UI settings when defined.
 
 ```
-# Domoticz connection
 DOMOTICZ_HOST=127.0.0.1
 DOMOTICZ_PORT=8080
-
-# Polling intervals
-#DAY_INTERVAL=300
-#NIGHT_INTERVAL=900
-
-# Sunrise / Sunset delays
+# ---- REFRESH PARAMETERS FAST POLLING IN SECONDS ----
+TEMP_DELAY=10
+TEMP_TIME=60
+# ---- DON'T USE YET ---- REFRESH PARAMETERS POLLING IN SECONDS. USE SETTING PAGE
+# ---- THIS SETTING WILL OVERRULE THE DOMOTICZ SETUP PAGE
+#REFRESH_DAY=60
+#REFRESH_NIGHT=1800
+# ---- DON'T USE YET ---- REFRESH PARAMETERS SUNSET/SUNRISE IN MINUTES. USE SETTING PAGE
 #SUNRISE_DELAY=30
-#SUNSET_DELAY=15
+#SUNET_DELAY=60
 
-# Temporary fast polling after command
-#TEMP_DELAY=10
-#TEMP_TIME=120
 ```
 Remove the # for the setting you want to use in config.txt
 

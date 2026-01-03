@@ -19,63 +19,77 @@
             <li>Debug: allows to set log level and specify log file location</li>
         </ol>
         <br/><font color="yellow">Please put in the additional parameters in the config.txt file in the plugin folder</font>
+        <br/>
         <br/>You can change the parameters and it will reload at midnight. No need to restart the app for the config.txt changes
         <br/>
-    </description>
+        <br/>
+<table border="1" cellpadding="4" cellspacing="0" width="50%">
+    <tr>
+        <th align="left" style="background-color: red;">Parameter</th>
+        <th align="left" style="background-color: red;">Description</th>
+    </tr>
+    <tr>
+        <td><b>Username</b></td>
+        <td>Enter your Somfy login name </td>
+    </tr>
+    <tr>
+        <td><b>Password</b></td>
+        <td>Enter your Somfy Password</td>
+    </tr>
+    <tr>
+        <td><b>Refresh interval (day;night)</b></td>
+        <td>How often must the devices be polled?
+        <br/>Enter two numbers separated by a semicolon (;)
+        <br/>The first number is for day refresh polling (in seconds), the second is for night refresh polling (in seconds).  
+        <br/>If this parameter is set in config.txt, it will override this setting.</td>
+    </tr>
+    <tr>
+        <td><b>Night Delay</b></td>
+        <td>How often must the devices be polled?
+        <br/>Enter two numbers separated by a semicolon (;).
+        <br/>The first number is for day refresh polling (in seconds), the second is for night refresh polling (in seconds).  
+        <br/>If this parameter is set in config.txt, it will override this setting</td>
+    </tr>
+    <tr>
+        <td><b>Connection</b></td>
+        <td>Choose how to interact with the Somfy/Tahoma/Connexoon box:
+        <br/>Web API: via Somfy web server (requires continuous internet access)
+        <br/>Local API: connect directly to the box (default)
+        <br/>Somfy is depreciating the Web access, so it is better to use the local API</td>
+    </tr>
+    <tr>
+        <td><b>Address</b></td>
+        <td>Gateway PIN of the Portnumber Tahoma box</td>
+    </tr>
+    <tr>
+        <td><b>Port</b></td>
+        <td>Portnumber of the Tahoma box</td>
+    </tr>
+    <tr>
+        <td><b>Reset token</b></td>
+        <td>Set to true to request a new token. Can be used when you get access denied</td>
+    </tr>
+    <tr>
+        <td><b>Log file location</b></td>
+        <td>Enter a location for the logfile (omit final /), or leave empty to create logfile in the Domoticz directory.<br/>Example for Linux: /var/log</td>
+    </tr>
+    <tr>
+        <td><b>Debug logging</b></td>
+        <td>Set to TRUE to enable debug logging for troubleshooting</td>
+    </tr>
+    </table>
+</description>
     <params>
         <param field="Username" label="Username" width="200px" required="true" default=""/>
         <param field="Password" label="Password" width="200px" required="true" default="" password="true"/>
-        <param field="Mode2" label="Refresh interval (day;night)" width="100px" default="20;900">
-        <description>
-        <br/>How often must the devices be polled?
-        <br/>Enter two numbers separated by a semicolon (;)
-        <br/>The first number is for day refresh polling (in seconds), the second is for night refresh polling (in seconds).  
-        <br/>If this parameter is set in config.txt, it will override this setting.
-        </description>
-        </param>
-        <param field="Mode3" label="Night Delay" width="200px" default="30;60">
-            <description>
-                <br/>How often must the devices be polled?
-                <br/>Enter two numbers separated by a semicolon (;).
-                <br/>The first number is for day refresh polling (in seconds), the second is for night refresh polling (in seconds).  
-                <br/>If this parameter is set in config.txt, it will override this setting.
-            </description>
-        </param>
-        <param field="Mode4" label="Connection" width="100px">
-            <description>
-                <br/>Choose how to interact with the Somfy/Tahoma/Connexoon box:
-                <br/>Web API: via Somfy web server (requires continuous internet access)
-                <br/>Local API: connect directly to the box (default)
-                <br/><br/>Somfy is depreciating the Web access, so it is better to use the local API
-            </description>
-            <options>
-                <option label="Web" value="Web"/>
-                <option label="Local" value="Local" default="true"/>
-            </options>
-        </param>
+        <param field="Mode2" label="Refresh interval (day;night)" width="100px" default="20;900"/>
+        <param field="Mode3" label="Night Delay" width="200px" default="30;60"/>
+        <param field="Mode4" label="Connection" width="100px"/>
         <param field="Address" label="Gateway PIN" width="150px" required="true" default="1234-1234-1234"/>
         <param field="Port" label="Portnumber Tahoma box" width="30px" required="true" default="8443"/>
-        <param field="Mode1" label="Reset token" width="100px">
-            <description>
-                Set to true to request a new token. Can be used when you get access denied.
-            </description>
-            <options>
-                <option label="False" value="False"/>
-                <option label="True" value="True" default="true"/>
-            </options>
-        </param>
-        <param field="Mode5" label="Log file location" width="200px" default="/var/log">
-            <description>
-                <br/>Enter a location for the logfile (omit final /), or leave empty to create logfile in the domoticz directory.
-                <br/>Default directory: '/var/log' for Linux
-            </description>
-        </param>
-        <param field="Mode6" label="Debug logging" width="100px">
-            <options>
-                <option label="True" value="Debug" default="true"/>
-                <option label="False" value="Normal"/>
-            </options>
-        </param>
+        <param field="Mode1" label="Reset token" width="100px"/>
+        <param field="Mode5" label="Log file location" width="200px" default="/var/log/"/>
+        <param field="Mode6" label="Debug logging" width="100px"/>
     </params>
 </plugin>
 """

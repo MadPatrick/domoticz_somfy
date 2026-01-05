@@ -4,10 +4,10 @@
 # 
 # All credits for the plugin are for Nonolk, who is the origin plugin creator
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.1.1" externallink="https://github.com/MadPatrick/somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.1.3" externallink="https://github.com/MadPatrick/somfy">
     <description>
         <br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
-        Version: 5.1.1
+        Version: 5.1.3
         <br/>This plugin connects to the Tahoma or Connexoon box either via the web API or via local access.
         <br/>Various devices are supported (RollerShutter, LightSensor, Screen, Awning, Window, VenetianBlind, etc.).
         <br/>For new devices, please raise a ticket at the Github link above.
@@ -19,61 +19,87 @@
             <li>Debug: allows to set log level and specify log file location</li>
         </ol>
         <br/><font color="yellow">Please put in the additional parameters in the config.txt file in the plugin folder</font>
-        <br/>You can change the parameters and it will reload at midnight. No need to restart the app for the config.txt changes
         <br/>
-    </description>
+        <br/>You can change the parameters and it will reload the config.txt at midnight. No need to restart the app for the config.txt changes
+        <br/>
+        <br/>
+<table border="1" cellpadding="4" cellspacing="0" width="50%">
+    <tr>
+        <th align="left" style="background-color: red;">Parameter</th>
+        <th align="left" style="background-color: red;">Description</th>
+    </tr>
+    <tr>
+        <td><b>Username</b></td>
+        <td>Enter your Somfy login name </td>
+    </tr>
+    <tr>
+        <td><b>Password</b></td>
+        <td>Enter your Somfy Password</td>
+    </tr>
+    <tr>
+        <td><b>Refresh interval</b></td>
+        <td>How often must the devices be polled?
+        <br/>Enter two numbers separated by a semicolon (;)
+        <br/>The first number is for day refresh polling (in seconds), the second is for night refresh polling (in seconds).  
+        <br/>If this parameter is set in config.txt, it will override this setting.</td>
+    </tr>
+    <tr>
+        <td><b>Night Mode</b></td>
+        <td>When should the night mode start?
+        <br/>Enter two numbers separated by a semicolon (;).
+        <br/>The first number is the time (in minutes) before sunrise, and the second number is the time after sunset.  
+        <br/>If this parameter is set in config.txt, it will override this setting</td>
+    </tr>
+    <tr>
+        <td><b>Connection</b></td>
+        <td>Choose how to interact with the Somfy/Tahoma/Connexoon box:
+        <br/>Web API: via Somfy web server (requires continuous internet access)
+        <br/>Local API: connect directly to the box (default)
+        <br/>Somfy is depreciating the Web access, so it is better to use the local API</td>
+    </tr>
+    <tr>
+        <td><b>Address</b></td>
+        <td>Gateway PIN of the Portnumber Tahoma box
+        <br/>Don't forget to set your DNS setting with you IP linked to the PIN number </td>
+    </tr>
+    <tr>
+        <td><b>Port</b></td>
+        <td>Portnumber of the Tahoma box (8443)</td>
+    </tr>
+    <tr>
+        <td><b>Reset token</b></td>
+        <td>Set to true to request a new token. Can be used when you get access denied</td>
+    </tr>
+    <tr>
+        <td><b>Log file location</b></td>
+        <td>Enter a location for the logfile (omit final /), or leave empty to create logfile in the Domoticz directory.<br/>Example for Linux: /var/log/</td>
+    </tr>
+    <tr>
+        <td><b>Debug logging</b></td>
+        <td>Set to TRUE to enable debug logging for troubleshooting</td>
+    </tr>
+    </table>
+    <br/>
+</description>
     <params>
         <param field="Username" label="Username" width="200px" required="true" default=""/>
         <param field="Password" label="Password" width="200px" required="true" default="" password="true"/>
-        <param field="Mode2" label="Refresh interval (day;night)" width="100px" default="20;900">
-        <description>
-        <br/>How often must the devices be polled?
-        <br/>Enter two numbers separated by a semicolon (;)
-        <br/>The first number is for day refresh polling (in seconds), the second is for night refresh polling (in seconds).  
-        <br/>If this parameter is set in config.txt, it will override this setting.
-        </description>
-        </param>
-        <param field="Mode3" label="Night Delay" width="200px" default="30;60">
-            <description>
-                <br/>How often must the devices be polled?
-                <br/>Enter two numbers separated by a semicolon (;).
-                <br/>The first number is for day refresh polling (in seconds), the second is for night refresh polling (in seconds).  
-                <br/>If this parameter is set in config.txt, it will override this setting.
-            </description>
-        </param>
-        <param field="Mode4" label="Connection" width="100px">
-            <description>
-                <br/>Choose how to interact with the Somfy/Tahoma/Connexoon box:
-                <br/>Web API: via Somfy web server (requires continuous internet access)
-                <br/>Local API: connect directly to the box (default)
-                <br/><br/>Somfy is depreciating the Web access, so it is better to use the local API
-            </description>
-            <options>
-                <option label="Web" value="Web"/>
-                <option label="Local" value="Local" default="true"/>
-            </options>
-        </param>
+        <param field="Mode2" label="Refresh interval" width="100px" default="30;900"/>
+        <param field="Mode3" label="Night Mode" width="200px" default="30;60"/>
+        <param field="Mode4" label="Connection" width="100px"/>
         <param field="Address" label="Gateway PIN" width="150px" required="true" default="1234-1234-1234"/>
         <param field="Port" label="Portnumber Tahoma box" width="30px" required="true" default="8443"/>
-        <param field="Mode1" label="Reset token" width="100px">
-            <description>
-                Set to true to request a new token. Can be used when you get access denied.
-            </description>
+        <param field="Mode1" label="Reset token" width="100px">            
             <options>
-                <option label="False" value="False"/>
-                <option label="True" value="True" default="true"/>
+                <option label="False" value="False" default="True"/>
+                <option label="True" value="True" />
             </options>
         </param>
-        <param field="Mode5" label="Log file location" width="200px" default="/var/log">
-            <description>
-                <br/>Enter a location for the logfile (omit final /), or leave empty to create logfile in the domoticz directory.
-                <br/>Default directory: '/var/log' for Linux
-            </description>
-        </param>
+        <param field="Mode5" label="Log file location" width="200px" default="/var/log/"/>
         <param field="Mode6" label="Debug logging" width="100px">
             <options>
-                <option label="True" value="Debug" default="true"/>
-                <option label="False" value="Normal"/>
+                <option label="True" value="Debug"/>
+                <option label="False" value="Normal"  default="true" />
             </options>
         </param>
     </params>
@@ -100,13 +126,8 @@ class BasePlugin:
     def __init__(self):
         self.enabled = False
         self.heartbeat = False
-        #self.devices = None
-        self.heartbeat_delay = 1
-        #self.con_delay = 0
-        #self.wait_delay = 30
         self.command_data = None
         self.command = False
-        #self.refresh = True
         self.actions_serialized = []
         self.logger = None
         self.log_filename = "somfy.log"
@@ -119,7 +140,7 @@ class BasePlugin:
         # defaults config.txt
         self.domoticz_host = "127.0.0.1"
         self.domoticz_port = "8080"
-        self.dayInterval = 20
+        self.dayInterval = 30
         self.nightInterval = 900
         self.sunriseDelay = 30
         self.sunsetDelay = 60
@@ -149,8 +170,8 @@ class BasePlugin:
  
         # Check Mode2 and set default as empty or invalid
         if not Parameters.get('Mode2') or ';' not in Parameters['Mode2']:
-            Domoticz.Log("Mode2 leeg of ongeldig, instellen op standaard 20;900")
-            Parameters['Mode2'] = "20;900"
+            Domoticz.Log("Mode2 leeg of ongeldig, instellen op standaard 30;900")
+            Parameters['Mode2'] = "30;900"
         # Check Mode3 (sunrise;sunset delay)
         if not Parameters.get('Mode3') or ';' not in Parameters['Mode3']:
             Domoticz.Log("Mode3 leeg of ongeldig, instellen op standaard 30;60")
@@ -170,8 +191,8 @@ class BasePlugin:
             self.dayInterval = int(day_str.strip())
             self.nightInterval = int(night_str.strip())
         except Exception as e:
-            Domoticz.Error("Invalid Mode2 value, using defaults 20;900: " + str(e))
-            self.dayInterval = 20
+            Domoticz.Error("Invalid Mode2 value, using defaults 30;900: " + str(e))
+            self.dayInterval = 30
             self.nightInterval = 900
         self.runCounter = self.dayInterval
         Domoticz.Heartbeat(1)
@@ -450,7 +471,6 @@ class BasePlugin:
                 dev = dataset["deviceURL"]
 #                deviceClassTrig = dataset["deviceClass"]
                 deviceClassTrig = dataset.get("deviceClass")
-#                Domoticz.Log("Checkpoint 1 deviceClassTrig : "+str(deviceClassTrig))  #Extra log
                 level = 0
                 status_num = 0
                 status = None
@@ -468,9 +488,7 @@ class BasePlugin:
                 for state in states:
 
                     if ((state["name"] == "core:ClosureState") or (state["name"] == "core:DeploymentState")):
-#                        Domoticz.Log("Checkpoint 2 deviceClassTrig : "+str(deviceClassTrig))  #Extra log
                         if (deviceClassTrig == "Awning"):
-                            Domoticz.Log("Checkpoint 3 deviceClassTrig : "+str(deviceClassTrig))  #Extra log
                             level = int(state["value"]) #Don't invert open/close percentage for an Awning
                             status_num = 1
                         else:

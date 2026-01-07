@@ -417,7 +417,8 @@ class BasePlugin:
             interval = self.temp_delay
             if not hasattr(self, '_temp_log_active') or not self._temp_log_active:
                 remaining = math.ceil(self.temp_interval_end - time.time())
-                Domoticz.Status(f"Action detected! Fast polling (10s) active for the next {remaining}s")
+                #Domoticz.Status(f"Action detected! Fast polling (10s) active for the next {remaining}s")
+                Domoticz.Status(f"Action detected! Fast polling ({self.temp_delay}s) active for the next {remaining}s")
                 self._temp_log_active = True
         else:
             interval = standard_interval

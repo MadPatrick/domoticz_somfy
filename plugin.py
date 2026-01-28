@@ -4,10 +4,10 @@
 # 
 # All credits for the plugin are for Nonolk, who is the origin plugin creator
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.1.3" externallink="https://github.com/MadPatrick/somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.1.4" externallink="https://github.com/MadPatrick/somfy">
     <description>
         <br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
-        Version: 5.1.3
+        Version: 5.1.4
         <br/>This plugin connects to the Tahoma or Connexoon box either via the web API or via local access.
         <br/>Various devices are supported (RollerShutter, LightSensor, Screen, Awning, Window, VenetianBlind, etc.).
         <br/>For new devices, please raise a ticket at the Github link above.
@@ -86,7 +86,13 @@
         <param field="Password" label="Password" width="200px" required="true" default="" password="true"/>
         <param field="Mode2" label="Refresh interval" width="100px" default="30;900"/>
         <param field="Mode3" label="Night Mode" width="200px" default="30;60"/>
-        <param field="Mode4" label="Connection" width="100px"/>
+        <param field = "Mode4" label="Connection" width="100px">
+            <description><br/>Somfy is depreciating the Web access, so it is better to use the local API</description>
+            <options>
+                <option label="Web" value="Web"/>
+                <option label="Local" value="Local" default="true"/>
+            </options>
+        </param>
         <param field="Address" label="Gateway PIN" width="150px" required="true" default="1234-1234-1234"/>
         <param field="Port" label="Portnumber Tahoma box" width="30px" required="true" default="8443"/>
         <param field="Mode1" label="Reset token" width="100px">            

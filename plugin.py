@@ -230,24 +230,23 @@ class BasePlugin:
         
         if self.tahoma.logged_in:
             if self.local:
-                Domoticz.Debug("check if token stored in configuration")
+                logging.debug("check if token stored in configuration")
                 confToken = getConfigItem('token', '0')
                 if confToken == '0' or Parameters["Mode1"] == "True":
-                    Domoticz.Debug("no token found, generate a new one")
+                    logging.debug("no token found, generate a new one")
                     self.tahoma.generate_token(pin)
                     self.tahoma.activate_token(pin,self.tahoma.token)
                     #store token for later use (not generate one at each start)
                     setConfigItem('token', self.tahoma.token)
                     Parameters["Mode1"] = "False"
                 else:
-                    Domoticz.Debug("found token in configuration: "+str(confToken))
+                    logging.debug("found token in configuration: "+str(confToken))
                     self.tahoma.token = confToken
                 self.tahoma.register_listener()
             else:
                 self.tahoma.register_listener()
 
-        free_unit = firstFree()
-        if self.tahoma.logged_in and free_unit is not None and free_unit < 249:
+        if self.tahoma.logged_in and firstFree() < 249:
             filtered_devices = self.tahoma.get_devices()
             self.create_devices(filtered_devices)
             self.update_devices_status(utils.filter_states(filtered_devices))

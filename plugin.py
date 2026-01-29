@@ -24,9 +24,9 @@
         <br/>
         <br/>
 <table border="1" cellpadding="4" cellspacing="0" width="50%">
-    <tr>
-        <th align="left" style="background-color: red;">Parameter</th>
-        <th align="left" style="background-color: red;">Description</th>
+    <tr style="font-weight: bold; color: yellow; background-color: black;">
+        <th align="left">Parameter</th>
+        <th align="left">Description</th>
     </tr>
     <tr>
         <td><b>Username</b></td>
@@ -35,20 +35,6 @@
     <tr>
         <td><b>Password</b></td>
         <td>Enter your Somfy Password</td>
-    </tr>
-    <tr>
-        <td><b>Refresh interval</b></td>
-        <td>How often must the devices be polled?
-        <br/>Enter two numbers separated by a semicolon (;)
-        <br/>The first number is for day refresh polling (in seconds), the second is for night refresh polling (in seconds).  
-        <br/>If this parameter is set in config.txt, it will override this setting.</td>
-    </tr>
-    <tr>
-        <td><b>Night Mode</b></td>
-        <td>When should the night mode start?
-        <br/>Enter two numbers separated by a semicolon (;).
-        <br/>The first number is the time (in minutes) before sunrise, and the second number is the time after sunset.  
-        <br/>If this parameter is set in config.txt, it will override this setting</td>
     </tr>
     <tr>
         <td><b>Connection</b></td>

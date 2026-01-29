@@ -6,10 +6,17 @@
 """
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 <plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.1.7" externallink="https://github.com/MadPatrick/somfy">
     <description>
         <br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
         Version: 5.1.7
+=======
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.1.5" externallink="https://github.com/MadPatrick/somfy">
+    <description>
+        <br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
+        Version: 5.1.5
+>>>>>>> parent of b02400d (updated version)
 =======
 <plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.1.5" externallink="https://github.com/MadPatrick/somfy">
     <description>

@@ -7,6 +7,7 @@
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 <plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.1.7" externallink="https://github.com/MadPatrick/somfy">
     <description>
         <br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
@@ -29,6 +30,12 @@
         <br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
         Version: 5.1.5
 >>>>>>> parent of b02400d (updated version)
+=======
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.1.6" externallink="https://github.com/MadPatrick/somfy">
+    <description>
+        <br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
+        Version: 5.1.6
+>>>>>>> parent of 0e8012a (removed param settings to config.txt)
         <br/>This plugin connects to the Tahoma or Connexoon box either via the web API or via local access.
         <br/>Various devices are supported (RollerShutter, LightSensor, Screen, Awning, Window, VenetianBlind, etc.).
         <br/>For new devices, please raise a ticket at the Github link above.
@@ -91,6 +98,8 @@
     <params>
         <param field="Username" label="Username" width="200px" required="true" default=""/>
         <param field="Password" label="Password" width="200px" required="true" default="" password="true"/>
+        <param field="Mode2" label="Refresh interval" width="100px" default="30;900"/>
+        <param field="Mode3" label="Night Mode" width="200px" default="30;60"/>
         <param field = "Mode4" label="Connection" width="100px">
             <description><br/>Somfy is depreciating the Web access, so it is better to use the local API</description>
             <options>
@@ -180,24 +189,36 @@ class BasePlugin:
         Domoticz.Debug("os.path.exists(Parameters['Mode5']) = {}".format(os.path.exists(Parameters["Mode5"])))
         logging.info("starting plugin version "+Parameters["Version"])
  
-        self.dayInterval = 30
-        self.nightInterval = 900
-        self.sunriseDelay = 30
-        self.sunsetDelay = 60
+        # Check Mode2 and set default as empty or invalid
+        if not Parameters.get('Mode2') or ';' not in Parameters['Mode2']:
+            Domoticz.Log("Mode2 leeg of ongeldig, instellen op standaard 30;900")
+            Parameters['Mode2'] = "30;900"
+        # Check Mode3 (sunrise;sunset delay)
+        if not Parameters.get('Mode3') or ';' not in Parameters['Mode3']:
+            Domoticz.Log("Mode3 leeg of ongeldig, instellen op standaard 30;60")
+            Parameters['Mode3'] = "30;60"
 
-        # Stel de tijdstempel NU al in, zodat onHeartbeat niet direct denkt dat het bestand gewijzigd is
-        config_path = os.path.join(os.path.dirname(__file__), "config.txt")
-        if os.path.exists(config_path):
-            self.last_config_mtime = os.path.getmtime(config_path)
+        try:
+            sr_delay_str, ss_delay_str = Parameters['Mode3'].split(';')
+            self.sunriseDelay = int(sr_delay_str.strip())
+            self.sunsetDelay = int(ss_delay_str.strip())
+        except Exception as e:
+            Domoticz.Error("Invalid Mode3 value, using defaults 30;60: " + str(e))
+            self.sunriseDelay = 30
+            self.sunsetDelay = 60
 
-        self.load_config_txt(log=True)
+        try:
+            day_str, night_str = Parameters['Mode2'].split(';')
+            self.dayInterval = int(day_str.strip())
+            self.nightInterval = int(night_str.strip())
+        except Exception as e:
+            Domoticz.Error("Invalid Mode2 value, using defaults 30;900: " + str(e))
+            self.dayInterval = 30
+            self.nightInterval = 900
+        self.runCounter = self.dayInterval
+        Domoticz.Heartbeat(1)
         
-        # 3. Meteen de zon-tijden ophalen zodat de interval direct klopt
-        self.refresh_daily_data()
-
-        # Initialiseer de runCounter op 0 zodat hij direct de eerste poll doet bij start
-        self.runCounter = 0
-        Domoticz.Heartbeat(5)
+        self.load_config_txt(log=True)
 
         #check upgrading of version needs actions
         self.version = Parameters["Version"]
@@ -264,8 +285,8 @@ class BasePlugin:
         return True
 
     def onStop(self):
-        logging.info("Plugin stopped")
-        Domoticz.Log("Plugin stopped")
+        logging.info("stopping plugin")
+        Domoticz.Log("stopping plugin")
         self.heartbeat = False
 
     def onConnect(self, Connection, Status, Description):
@@ -496,13 +517,12 @@ class BasePlugin:
             standard_interval = self.nightInterval
             status_label = "NIGHT-MODE"
 
-        # 3. Check if the TEMPORARY interval is still active
+        # 3. Check if the TEMPORARY interval (10s) is still active
         if time.time() < self.temp_interval_end:
             interval = self.temp_delay
             if not hasattr(self, '_temp_log_active') or not self._temp_log_active:
-                # Rond altijd af naar boven naar het dichtstbijzijnde hele getal
-                remaining = int(math.ceil(self.temp_interval_end - time.time()))
-                
+                remaining = math.ceil(self.temp_interval_end - time.time())
+                #Domoticz.Status(f"Action detected! Fast polling (10s) active for the next {remaining}s")
                 Domoticz.Status(f"Action detected! Fast polling ({self.temp_delay}s) active for the next {remaining}s")
                 self._temp_log_active = True
         else:

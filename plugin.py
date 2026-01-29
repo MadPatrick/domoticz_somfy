@@ -4,10 +4,10 @@
 # 
 # All credits for the plugin are for Nonolk, who is the origin plugin creator
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.1.4" externallink="https://github.com/MadPatrick/somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.1.5" externallink="https://github.com/MadPatrick/somfy">
     <description>
         <br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
-        Version: 5.1.4
+        Version: 5.1.5
         <br/>This plugin connects to the Tahoma or Connexoon box either via the web API or via local access.
         <br/>Various devices are supported (RollerShutter, LightSensor, Screen, Awning, Window, VenetianBlind, etc.).
         <br/>For new devices, please raise a ticket at the Github link above.
@@ -153,7 +153,6 @@ class BasePlugin:
         self.temp_delay = 10
         self.temp_time = 60
         self.temp_interval_end = 0
-
     
     def onStart(self):
 
@@ -164,7 +163,9 @@ class BasePlugin:
             log_dir = ""
         log_fullname = os.path.join(log_dir, self.log_filename)
         Domoticz.Log("Starting Tahoma blind plugin, logging to file {0}".format(log_fullname))
+
         self.logger = logging.getLogger('root')
+
         if Parameters["Mode6"] == "Debug":
             Domoticz.Debugging(2)
             DumpConfigToLog()
@@ -203,7 +204,7 @@ class BasePlugin:
         self.runCounter = self.dayInterval
         Domoticz.Heartbeat(1)
         
-        self.load_config_txt(log=False)
+        self.load_config_txt(log=True)
 
         #check upgrading of version needs actions
         self.version = Parameters["Version"]
@@ -228,30 +229,49 @@ class BasePlugin:
             Domoticz.Error("Failed to login: " + str(exp))
             return False
         
-        if self.tahoma.logged_in:
-            if self.local:
-                logging.debug("check if token stored in configuration")
-                confToken = getConfigItem('token', '0')
-                if confToken == '0' or Parameters["Mode1"] == "True":
-                    logging.debug("no token found, generate a new one")
-                    self.tahoma.generate_token(pin)
-                    self.tahoma.activate_token(pin,self.tahoma.token)
-                    #store token for later use (not generate one at each start)
-                    setConfigItem('token', self.tahoma.token)
-                    Parameters["Mode1"] = "False"
-                else:
-                    logging.debug("found token in configuration: "+str(confToken))
-                    self.tahoma.token = confToken
-                self.tahoma.register_listener()
-            else:
-                self.tahoma.register_listener()
+        self.setup_and_sync_devices(pin)
 
-        if self.tahoma.logged_in and firstFree() < 249:
-            filtered_devices = self.tahoma.get_devices()
+    def setup_and_sync_devices(self, pin):
+
+        if not self.tahoma.logged_in:
+            Domoticz.Error("TaHoma not logged in")
+            return False
+
+        # --- TOKEN / LISTENER ---
+        if self.local:
+            logging.debug("check if token stored in configuration")
+            confToken = getConfigItem('token', '0')
+
+            if confToken == '0' or Parameters["Mode1"] == "True":
+                logging.debug("no token found, generate a new one")
+                self.tahoma.generate_token(pin)
+                self.tahoma.activate_token(pin, self.tahoma.token)
+                setConfigItem('token', self.tahoma.token)
+                Parameters["Mode1"] = "False"
+            else:
+                logging.debug("found token in configuration: " + str(confToken))
+                self.tahoma.token = confToken
+
+        self.tahoma.register_listener()
+
+        # --- DEVICES OPHALEN ---
+        filtered_devices = self.tahoma.get_devices()
+
+        # --- DEVICES AANMAKEN (alleen als nodig) ---
+        if len(Devices) == 0:
+            unit = firstFree()
+            if unit is None or unit >= 249:
+                Domoticz.Error("No free Domoticz units available, cannot create devices")
+                return False
+
             self.create_devices(filtered_devices)
-            self.update_devices_status(utils.filter_states(filtered_devices))
+
+        # --- STATUS UPDATEN ---
+        self.update_devices_status(utils.filter_states(filtered_devices))
+
         return True
-            
+
+
     def onStop(self):
         logging.info("stopping plugin")
         self.heartbeat = False
@@ -669,48 +689,53 @@ class BasePlugin:
         config_path = os.path.join(os.path.dirname(__file__), "config.txt")
         if not os.path.exists(config_path):
             if log:
-                Domoticz.Status("config.txt not found, using defaults")
+                Domoticz.Status("config.txt niet gevonden, standaardwaarden worden gebruikt.")
             return
 
         try:
             with open(config_path, "r") as f:
                 for line in f:
                     line = line.strip()
+                    # Sla lege regels of commentaar over
                     if not line or line.startswith("#") or "=" not in line:
                         continue
-
+                    
+                    # Splits de regel in sleutel en waarde
                     key, value = line.split("=", 1)
-                    key = key.strip().upper()
-                    value = value.strip()
+                    key = key.strip().lower()
+                    val = value.strip()
 
-                    if key == "DOMOTICZ_HOST":
-                        self.domoticz_host = value
-                    elif key == "DOMOTICZ_PORT":
-                        self.domoticz_port = value
-                    elif key == "REFRESH_DAY":
-                        self.dayInterval = int(value)
-                    elif key == "REFRESH_NIGHT":
-                        self.nightInterval = int(value)
-                    elif key == "SUNRISE_DELAY":
-                        self.sunriseDelay = int(value)
-                    elif key == "SUNSET_DELAY":
-                        self.sunsetDelay = int(value)
-                    elif key == "TEMP_DELAY":
-                        self.temp_delay = int(value)
-                    elif key == "TEMP_TIME":
-                        self.temp_time = int(value)
+                    try:
+                        if key == "domoticz_host":
+                            self.domoticz_host = val
+                        elif key == "domoticz_port":
+                            self.domoticz_port = val
+                        elif key == "dayinterval":
+                            self.dayInterval = int(val)
+                        elif key == "nightinterval":
+                            self.nightInterval = int(val)
+                        elif key == "sunrisedelay":
+                            self.sunriseDelay = int(val)
+                        elif key == "sunsetdelay":
+                            self.sunsetDelay = int(val)
+                        elif key == "temp_delay":
+                            self.temp_delay = int(val)
+                        elif key == "temp_time":
+                            self.temp_time = int(val)
+                    except ValueError:
+                        Domoticz.Error(f"Ongeldige waarde in config.txt voor {key}: {val}")
 
             if log:
                 Domoticz.Log(
-                    f"config.txt loaded: "
+                    f"config.txt succesvol geladen: "
                     f"Host={self.domoticz_host}:{self.domoticz_port}, "
-                    f"Day={self.dayInterval}s Night={self.nightInterval}s, "
-                    f"SunriseDelay={self.sunriseDelay}m SunsetDelay={self.sunsetDelay}m, "
-                    f"Temp={self.temp_delay}s for {self.temp_time // 60}m"
+                    f"Day={self.dayInterval}s, Night={self.nightInterval}s, "
+                    f"SunriseDelay={self.sunriseDelay}m, SunsetDelay={self.sunsetDelay}m, "
+                    f"Temp={self.temp_delay}s voor {self.temp_time // 60}m"
                 )
 
         except Exception as e:
-            Domoticz.Error(f"Error reading config.txt: {e}")
+            Domoticz.Error(f"Fout bij het laden van config.txt: {str(e)}")
 
     def log_changes(self, interval, sunrise_str, sunset_str, status_label):
         """Logs changes in interval, sunrise, and sunset, only if they differ from last known values."""
@@ -779,6 +804,7 @@ def onHeartbeat():
     _plugin.onHeartbeat()
 
 # Generic helper functions
+
 def DumpConfigToLog():
     Domoticz.Debug("Parameters count: " + str(len(Parameters)))
     for x in Parameters:

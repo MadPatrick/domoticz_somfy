@@ -113,7 +113,7 @@
 # Tahoma/Connexoon IO blind plugin
 import DomoticzEx as Domoticz
 import json
-import sys
+#import sys
 import logging
 import exceptions
 import time
@@ -123,7 +123,7 @@ import os
 import math
 from tahoma_local import SomfyBox
 import utils
-import requests
+#import requests
 import urllib.request
 
 class BasePlugin:
@@ -137,10 +137,16 @@ class BasePlugin:
         self.log_filename = "somfy.log"
         self.version = ""
         self.local = False
+
+        # Polling & Config
         self.runCounter = 0
+        self.last_config_mtime = 0
         self.last_daily_refresh = None
+
+        # Zon-tijden (HH:MM)
         self.last_sunrise = None
         self.last_sunset = None
+
         # defaults config.txt
         self.domoticz_host = "127.0.0.1"
         self.domoticz_port = "8080"
@@ -148,10 +154,11 @@ class BasePlugin:
         self.nightInterval = 900
         self.sunriseDelay = 30
         self.sunsetDelay = 60
-        self.temp_delay = 10
-        self.temp_time = 60
-        self.temp_interval_end = 0
-        self.last_config_mtime = 0
+
+        # Tijdelijke snelle polling (na commando)
+        self.temp_delay = 10         # Seconden interval
+        self.temp_time = 60          # Totale duur in seconden
+        self.temp_interval_end = 0   # Timestamp wanneer het stopt
     
     def onStart(self):
         if os.path.exists(Parameters["Mode5"]):
@@ -307,12 +314,13 @@ class BasePlugin:
 
         # Mark the day as refreshed
         self.last_daily_refresh = today
-        Domoticz.Log(
-            f"Daily refresh: host={self.domoticz_host}, port={self.domoticz_port}, "
-            f"Day Interval={self.dayInterval}s, Night Interval={self.nightInterval}s, "
-            f"Sunrise Delay={self.sunriseDelay}m, Sunset Delay={self.sunsetDelay}m, "
-            f"Temp polling: {self.temp_delay}s for {self.temp_time // 60}m"
-        )
+        Domoticz.Log("Daily refresh loaded")
+        Domoticz.Log(f"  Host          : {self.domoticz_host}:{self.domoticz_port}")
+        Domoticz.Log(f"  Day Interval  : {self.dayInterval}s")
+        Domoticz.Log(f"  Night Interval: {self.nightInterval}s")
+        Domoticz.Log(f"  Sunrise Delay : {self.sunriseDelay}m")
+        Domoticz.Log(f"  Sunset Delay  : {self.sunsetDelay}m")
+        Domoticz.Log(f"  Temp Polling  : {self.temp_delay}s voor {self.temp_time // 60}m")
         Domoticz.Log(f"Daily refresh: New setting sunrise={self.last_sunrise} sunset={self.last_sunset}")
 
     def log_day_night_times(self):
@@ -778,13 +786,13 @@ class BasePlugin:
                         Domoticz.Error(f"Invaldig value in config.txt for {key}: {val}")
 
             if log:
-                Domoticz.Log(
-                    f"config.txt loaded succesfully: "
-                    f"Host={self.domoticz_host}:{self.domoticz_port}, "
-                    f"Day={self.dayInterval}s, Night={self.nightInterval}s, "
-                    f"SunriseDelay={self.sunriseDelay}m, SunsetDelay={self.sunsetDelay}m, "
-                    f"Temp={self.temp_delay}s voor {self.temp_time // 60}m"
-                )
+                Domoticz.Log("config.txt loaded successfully with the following parameters:")
+                Domoticz.Log(f"  Host          : {self.domoticz_host}:{self.domoticz_port}")
+                Domoticz.Log(f"  Day Interval  : {self.dayInterval}s")
+                Domoticz.Log(f"  Night Interval: {self.nightInterval}s")
+                Domoticz.Log(f"  Sunrise Delay : {self.sunriseDelay}m")
+                Domoticz.Log(f"  Sunset Delay  : {self.sunsetDelay}m")
+                Domoticz.Log(f"  Temp Polling  : {self.temp_delay}s voor {self.temp_time // 60}m")
 
         except Exception as e:
             Domoticz.Error(f"Fout bij het laden van config.txt: {str(e)}")
@@ -799,7 +807,7 @@ class BasePlugin:
 
         # Log changes individually
         if interval_changed:
-            Domoticz.Log(f"Polling interval changed: new interval = {interval}s")
+            Domoticz.Log(f"Polling interval changed: New interval = {interval}s")
 
         if sunrise_changed:
             Domoticz.Log(f"Sunrise updated ({status_label}): {getattr(self, 'last_sunrise', 'N/A')} ? {sunrise_str}")

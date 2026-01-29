@@ -4,38 +4,10 @@
 # 
 # All credits for the plugin are for Nonolk, who is the origin plugin creator
 """
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.1.7" externallink="https://github.com/MadPatrick/somfy">
-    <description>
-        <br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
-        Version: 5.1.7
-=======
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.1.5" externallink="https://github.com/MadPatrick/somfy">
-    <description>
-        <br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
-        Version: 5.1.5
->>>>>>> parent of b02400d (updated version)
-=======
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.1.5" externallink="https://github.com/MadPatrick/somfy">
-    <description>
-        <br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
-        Version: 5.1.5
->>>>>>> parent of b02400d (updated version)
-=======
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.1.5" externallink="https://github.com/MadPatrick/somfy">
-    <description>
-        <br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
-        Version: 5.1.5
->>>>>>> parent of b02400d (updated version)
-=======
 <plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.1.6" externallink="https://github.com/MadPatrick/somfy">
     <description>
         <br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
         Version: 5.1.6
->>>>>>> parent of 0e8012a (removed param settings to config.txt)
         <br/>This plugin connects to the Tahoma or Connexoon box either via the web API or via local access.
         <br/>Various devices are supported (RollerShutter, LightSensor, Screen, Awning, Window, VenetianBlind, etc.).
         <br/>For new devices, please raise a ticket at the Github link above.
@@ -52,9 +24,9 @@
         <br/>
         <br/>
 <table border="1" cellpadding="4" cellspacing="0" width="50%">
-    <tr style="font-weight: bold; color: yellow; background-color: black;">
-        <th align="left">Parameter</th>
-        <th align="left">Description</th>
+    <tr>
+        <th align="left" style="background-color: red;">Parameter</th>
+        <th align="left" style="background-color: red;">Description</th>
     </tr>
     <tr>
         <td><b>Username</b></td>
@@ -63,6 +35,20 @@
     <tr>
         <td><b>Password</b></td>
         <td>Enter your Somfy Password</td>
+    </tr>
+    <tr>
+        <td><b>Refresh interval</b></td>
+        <td>How often must the devices be polled?
+        <br/>Enter two numbers separated by a semicolon (;)
+        <br/>The first number is for day refresh polling (in seconds), the second is for night refresh polling (in seconds).  
+        <br/>If this parameter is set in config.txt, it will override this setting.</td>
+    </tr>
+    <tr>
+        <td><b>Night Mode</b></td>
+        <td>When should the night mode start?
+        <br/>Enter two numbers separated by a semicolon (;).
+        <br/>The first number is the time (in minutes) before sunrise, and the second number is the time after sunset.  
+        <br/>If this parameter is set in config.txt, it will override this setting</td>
     </tr>
     <tr>
         <td><b>Connection</b></td>

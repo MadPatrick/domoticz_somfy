@@ -153,9 +153,9 @@ class BasePlugin:
         self.temp_delay = 10
         self.temp_time = 60
         self.temp_interval_end = 0
+        self.last_config_mtime = 0
     
     def onStart(self):
-
         if os.path.exists(Parameters["Mode5"]):
             log_dir = Parameters["Mode5"] 
         else:
@@ -232,7 +232,6 @@ class BasePlugin:
         self.setup_and_sync_devices(pin)
 
     def setup_and_sync_devices(self, pin):
-
         if not self.tahoma.logged_in:
             Domoticz.Error("TaHoma not logged in")
             return False
@@ -271,9 +270,9 @@ class BasePlugin:
 
         return True
 
-
     def onStop(self):
         logging.info("stopping plugin")
+        Domoticz.Log("stopping plugin")
         self.heartbeat = False
 
     def onConnect(self, Connection, Status, Description):
@@ -310,6 +309,8 @@ class BasePlugin:
                 sunset_full = data.get("Sunset", "22:00:00")
                 self.last_sunrise = sunrise_full[:5]
                 self.last_sunset = sunset_full[:5]
+                # Log the actual day/night times
+                self.log_day_night_times()
             Domoticz.Debug(f"Sunrise/sunset ververst: {self.last_sunrise} / {self.last_sunset}")
         except Exception as e:
             Domoticz.Error(f"sunrise/sunset couldn't be loaded: {e}")
@@ -327,6 +328,68 @@ class BasePlugin:
             f"Temp polling: {self.temp_delay}s for {self.temp_time // 60}m"
         )
         Domoticz.Log(f"Daily refresh: New setting sunrise={self.last_sunrise} sunset={self.last_sunset}")
+
+    def log_day_night_times(self):
+        if not self.last_sunrise or not self.last_sunset:
+            Domoticz.Debug("Sunrise/sunset nog niet beschikbaar, kan dag/nacht tijden niet loggen")
+            return
+
+        # Convert sunrise and sunset strings to hours and minutes
+        sr_hour, sr_min = map(int, self.last_sunrise.split(':'))
+        ss_hour, ss_min = map(int, self.last_sunset.split(':'))
+
+        # Day mode start = sunrise - sunriseDelay
+        day_start_minutes = sr_hour * 60 + sr_min - self.sunriseDelay
+        day_start_hour = day_start_minutes // 60
+        day_start_min = day_start_minutes % 60
+
+        # Night mode start = sunset + sunsetDelay
+        night_start_minutes = ss_hour * 60 + ss_min + self.sunsetDelay
+        night_start_hour = night_start_minutes // 60
+        night_start_min = night_start_minutes % 60
+
+        # Format time as HH:MM
+        day_start_str = f"{day_start_hour:02d}:{day_start_min:02d}"
+        night_start_str = f"{night_start_hour:02d}:{night_start_min:02d}"
+
+        Domoticz.Log(f"Day mode starts at {day_start_str} | Night mode starts at {night_start_str}")
+
+    def check_config_update(self):
+        config_path = os.path.join(os.path.dirname(__file__), "config.txt")
+        if not os.path.exists(config_path):
+            return  # geen config.txt, niks doen
+
+        # Kijk naar de laatste wijzigingstijd van het bestand
+        mtime = os.path.getmtime(config_path)
+        if hasattr(self, 'last_config_mtime') and mtime <= self.last_config_mtime:
+            return  # geen nieuwe wijziging sinds laatste check
+
+        # Bestand is gewijzigd, inlezen en toepassen
+        self.last_config_mtime = mtime
+        self.load_config_txt(log=True)  # bestaande functie in jouw plugin
+    
+        # --- Dag/nacht tijden loggen ---
+        if hasattr(self, 'log_day_night_times'):
+            self.log_day_night_times()  # direct loggen
+
+        Domoticz.Log("config.txt changed. New settings will be used")
+
+        # Zet het runCounter opnieuw op basis van de nieuwe dag/nacht interval
+        now_dt = datetime.datetime.now()
+        now_minutes = now_dt.hour * 60 + now_dt.minute
+        if self.last_sunrise and self.last_sunset:
+            sr_hour, sr_min = map(int, self.last_sunrise.split(':'))
+            ss_hour, ss_min = map(int, self.last_sunset.split(':'))
+            sunrise = sr_hour * 60 + sr_min
+            sunset = ss_hour * 60 + ss_min
+        else:
+            sunrise = 360  # 06:00
+            sunset = 1320  # 22:00
+
+        if sunrise - self.sunriseDelay <= now_minutes < sunset + self.sunsetDelay:
+            self.runCounter = self.dayInterval
+        else:
+            self.runCounter = self.nightInterval
 
     def onMessage(self, Connection, Data):
         Domoticz.Error("onMessage called but not implemented")
@@ -415,6 +478,9 @@ class BasePlugin:
 
         if not self.enabled:
             return False
+
+        # Check config.txt updates
+        self.check_config_update()
 
         now_dt = datetime.datetime.now()
         now_minutes = now_dt.hour * 60 + now_dt.minute
@@ -665,6 +731,7 @@ class BasePlugin:
                         Domoticz.Unit(Name=device["label"], Unit=1, Type=deviceType, Subtype=subtype2, Switchtype=swtype, DeviceID=device["deviceURL"], Used=used).Create()
                      
                     logging.info("New device created: "+device["label"])
+                    Domoticz.Log("New device created: "+device["label"])
                 else:
                     found = False
         logging.debug("create_devices: finished create devices")
@@ -689,45 +756,43 @@ class BasePlugin:
         config_path = os.path.join(os.path.dirname(__file__), "config.txt")
         if not os.path.exists(config_path):
             if log:
-                Domoticz.Status("config.txt niet gevonden, standaardwaarden worden gebruikt.")
+                Domoticz.Status("config.txt not found, using default values.")
             return
 
         try:
             with open(config_path, "r") as f:
                 for line in f:
                     line = line.strip()
-                    # Sla lege regels of commentaar over
                     if not line or line.startswith("#") or "=" not in line:
                         continue
-                    
-                    # Splits de regel in sleutel en waarde
+                
                     key, value = line.split("=", 1)
-                    key = key.strip().lower()
+                    key = key.strip().upper()  # LET OP: gebruik UPPER voor jouw keys
                     val = value.strip()
 
                     try:
-                        if key == "domoticz_host":
-                            self.domoticz_host = val
-                        elif key == "domoticz_port":
-                            self.domoticz_port = val
-                        elif key == "dayinterval":
+                        if key == "REFRESH_DAY":
                             self.dayInterval = int(val)
-                        elif key == "nightinterval":
+                        elif key == "REFRESH_NIGHT":
                             self.nightInterval = int(val)
-                        elif key == "sunrisedelay":
-                            self.sunriseDelay = int(val)
-                        elif key == "sunsetdelay":
-                            self.sunsetDelay = int(val)
-                        elif key == "temp_delay":
+                        elif key == "TEMP_DELAY":
                             self.temp_delay = int(val)
-                        elif key == "temp_time":
+                        elif key == "TEMP_TIME":
                             self.temp_time = int(val)
+                        elif key == "SUNRISE_DELAY":
+                            self.sunriseDelay = int(val)
+                        elif key == "SUNSET_DELAY":
+                            self.sunsetDelay = int(val)
+                        elif key == "DOMOTICZ_HOST":
+                            self.domoticz_host = val
+                        elif key == "DOMOTICZ_PORT":
+                            self.domoticz_port = val
                     except ValueError:
-                        Domoticz.Error(f"Ongeldige waarde in config.txt voor {key}: {val}")
+                        Domoticz.Error(f"Invaldig value in config.txt for {key}: {val}")
 
             if log:
                 Domoticz.Log(
-                    f"config.txt succesvol geladen: "
+                    f"config.txt loaded succesfully: "
                     f"Host={self.domoticz_host}:{self.domoticz_port}, "
                     f"Day={self.dayInterval}s, Night={self.nightInterval}s, "
                     f"SunriseDelay={self.sunriseDelay}m, SunsetDelay={self.sunsetDelay}m, "
@@ -827,7 +892,10 @@ def firstFree():
             return num
     return
 
+#############
 # Configuration Helpers
+#############
+
 def getConfigItem(Key=None, Default={}):
    Value = Default
    try:

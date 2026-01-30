@@ -4,10 +4,10 @@
 # 
 # All credits for the plugin are for Nonolk, who is the origin plugin creator
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.1.6" externallink="https://github.com/MadPatrick/somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.1.7" externallink="https://github.com/MadPatrick/somfy">
     <description>
         <br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
-        Version: 5.1.6
+        Version: 5.1.7
         <br/>This plugin connects to the Tahoma or Connexoon box either via the web API or via local access.
         <br/>Various devices are supported (RollerShutter, LightSensor, Screen, Awning, Window, VenetianBlind, etc.).
         <br/>For new devices, please raise a ticket at the Github link above.
@@ -19,8 +19,6 @@
             <li>Debug: allows to set log level and specify log file location</li>
         </ol>
         <br/><font color="yellow">Please put in the additional parameters in the config.txt file in the plugin folder</font>
-        <br/>
-        <br/>You can change the parameters and it will reload the config.txt at midnight. No need to restart the app for the config.txt changes
         <br/>
         <br/>
 <table border="1" cellpadding="4" cellspacing="0" width="50%">
@@ -40,15 +38,13 @@
         <td><b>Refresh interval</b></td>
         <td>How often must the devices be polled?
         <br/>Enter two numbers separated by a semicolon (;)
-        <br/>The first number is for day refresh polling (in seconds), the second is for night refresh polling (in seconds).  
-        <br/>If this parameter is set in config.txt, it will override this setting.</td>
+        <br/>The first number is for day refresh polling (in seconds), the second is for night refresh polling (in seconds).</td>
     </tr>
     <tr>
         <td><b>Night Mode</b></td>
         <td>When should the night mode start?
         <br/>Enter two numbers separated by a semicolon (;).
-        <br/>The first number is the time (in minutes) before sunrise, and the second number is the time after sunset.  
-        <br/>If this parameter is set in config.txt, it will override this setting</td>
+        <br/>The first number is the time (in minutes) before sunrise, and the second number is the time after sunset.</td>
     </tr>
     <tr>
         <td><b>Connection</b></td>
@@ -85,8 +81,8 @@
         <param field="Username" label="Username" width="200px" required="true" default=""/>
         <param field="Password" label="Password" width="200px" required="true" default="" password="true"/>
         <param field="Mode2" label="Refresh interval" width="100px" default="30;900"/>
-        <param field="Mode3" label="Night Mode" width="200px" default="30;60"/>
-        <param field = "Mode4" label="Connection" width="100px">
+        <param field="Mode3" label="Night Mode" width="100px" default="30;60"/>
+        <param field="Mode4" label="Connection" width="100px">
             <description><br/>Somfy is depreciating the Web access, so it is better to use the local API</description>
             <options>
                 <option label="Web" value="Web"/>
@@ -94,7 +90,7 @@
             </options>
         </param>
         <param field="Address" label="Gateway PIN" width="150px" required="true" default="1234-1234-1234"/>
-        <param field="Port" label="Portnumber Tahoma box" width="30px" required="true" default="8443"/>
+        <param field="Port" label="Portnumber Tahoma box" width="100px" required="true" default="8443"/>
         <param field="Mode1" label="Reset token" width="100px">            
             <options>
                 <option label="False" value="False" default="True"/>
@@ -115,7 +111,7 @@
 # Tahoma/Connexoon IO blind plugin
 import DomoticzEx as Domoticz
 import json
-import sys
+#import sys
 import logging
 import exceptions
 import time
@@ -125,7 +121,7 @@ import os
 import math
 from tahoma_local import SomfyBox
 import utils
-import requests
+#import requests
 import urllib.request
 
 class BasePlugin:
@@ -137,13 +133,12 @@ class BasePlugin:
         self.actions_serialized = []
         self.logger = None
         self.log_filename = "somfy.log"
-        self.version = ""
         self.local = False
         self.runCounter = 0
         self.last_daily_refresh = None
         self.last_sunrise = None
         self.last_sunset = None
-        # defaults config.txt
+        # defaults
         self.domoticz_host = "127.0.0.1"
         self.domoticz_port = "8080"
         self.dayInterval = 30
@@ -153,7 +148,6 @@ class BasePlugin:
         self.temp_delay = 10
         self.temp_time = 60
         self.temp_interval_end = 0
-        self.last_config_mtime = 0
     
     def onStart(self):
         if os.path.exists(Parameters["Mode5"]):
@@ -205,13 +199,8 @@ class BasePlugin:
         Domoticz.Heartbeat(1)
         
         self.load_config_txt(log=True)
-
-        #check upgrading of version needs actions
-        self.version = Parameters["Version"]
-        self.enabled = self.checkVersion(self.version)
-        if not self.enabled:
-            return False
-
+        self.enabled = True
+        
         pin = Parameters["Address"]
         port = int(Parameters["Port"])
         
@@ -279,7 +268,7 @@ class BasePlugin:
         Domoticz.Debug("onConnect: Connection: '"+str(Connection)+"', Status: '"+str(Status)+"', Description: '"+str(Description)+"' self.tahoma.logged_in: '"+str(self.tahoma.logged_in)+"'")
         if (Status == 0 and not self.tahoma.logged_in):
           self.tahoma.tahoma_login(str(Parameters["Username"]), str(Parameters["Password"]))
-        elif (self.cookie and self.tahoma.logged_in and (not self.command)):
+        elif (self.tahoma.logged_in and (not self.command)):
           event_list = self.tahoma.get_events()
           self.update_devices_status(event_list)
 
@@ -297,8 +286,6 @@ class BasePlugin:
         # Check if we have already refreshed today
         if self.last_daily_refresh == today:
             return
-
-        self.load_config_txt(log=False)
 
         # === 2. Sunrise/sunset retrieval ===
         try:
@@ -353,43 +340,6 @@ class BasePlugin:
         night_start_str = f"{night_start_hour:02d}:{night_start_min:02d}"
 
         Domoticz.Log(f"Day mode starts at {day_start_str} | Night mode starts at {night_start_str}")
-
-    def check_config_update(self):
-        config_path = os.path.join(os.path.dirname(__file__), "config.txt")
-        if not os.path.exists(config_path):
-            return  # geen config.txt, niks doen
-
-        # Kijk naar de laatste wijzigingstijd van het bestand
-        mtime = os.path.getmtime(config_path)
-        if hasattr(self, 'last_config_mtime') and mtime <= self.last_config_mtime:
-            return  # geen nieuwe wijziging sinds laatste check
-
-        # Bestand is gewijzigd, inlezen en toepassen
-        self.last_config_mtime = mtime
-        self.load_config_txt(log=True)  # bestaande functie in jouw plugin
-    
-        # --- Dag/nacht tijden loggen ---
-        if hasattr(self, 'log_day_night_times'):
-            self.log_day_night_times()  # direct loggen
-
-        Domoticz.Log("config.txt changed. New settings will be used")
-
-        # Zet het runCounter opnieuw op basis van de nieuwe dag/nacht interval
-        now_dt = datetime.datetime.now()
-        now_minutes = now_dt.hour * 60 + now_dt.minute
-        if self.last_sunrise and self.last_sunset:
-            sr_hour, sr_min = map(int, self.last_sunrise.split(':'))
-            ss_hour, ss_min = map(int, self.last_sunset.split(':'))
-            sunrise = sr_hour * 60 + sr_min
-            sunset = ss_hour * 60 + ss_min
-        else:
-            sunrise = 360  # 06:00
-            sunset = 1320  # 22:00
-
-        if sunrise - self.sunriseDelay <= now_minutes < sunset + self.sunsetDelay:
-            self.runCounter = self.dayInterval
-        else:
-            self.runCounter = self.nightInterval
 
     def onMessage(self, Connection, Data):
         Domoticz.Error("onMessage called but not implemented")
@@ -475,19 +425,14 @@ class BasePlugin:
 
     def onHeartbeat(self):
         self.runCounter -= 1
-
         if not self.enabled:
             return False
 
-        # Check config.txt updates
-        self.check_config_update()
+        self.refresh_daily_data()
 
         now_dt = datetime.datetime.now()
         now_minutes = now_dt.hour * 60 + now_dt.minute
 
-        # 1. Daily data refresh (config & sun times)
-        self.refresh_daily_data()
-        
         # 2. Set the default interval based on time (Day/Night)
         sunrise_str = self.last_sunrise or "06:00"
         sunset_str = self.last_sunset or "22:00"
@@ -561,7 +506,6 @@ class BasePlugin:
 
             if (dataset["deviceURL"].startswith("io://")):
                 dev = dataset["deviceURL"]
-#                deviceClassTrig = dataset["deviceClass"]
                 deviceClassTrig = dataset.get("deviceClass")
                 level = 0
                 status_num = 0
@@ -640,35 +584,6 @@ class BasePlugin:
     def onDeviceRemoved(self, DeviceID, Unit):
         logging.debug("onDeviceRemoved called for DeviceID {0} and Unit {1}".format(DeviceID, Unit))
 
-    def checkVersion(self, version):
-        """checks actual version against stored version as 'Ma.Mi.Pa' and checks if updates needed"""
-        #read version from stored configuration
-        ConfVersion = getConfigItem("plugin version", "0.0.0")
-        Domoticz.Log("Starting version: " + version )
-        logging.info("Starting version: " + version )
-        MaCurrent,MiCurrent,PaCurrent = version.split('.')
-        MaConf,MiConf,PaConf = ConfVersion.split('.')
-        logging.debug("checking versions: current '{0}', config '{1}'".format(version, ConfVersion))
-        can_continue = True
-        if int(MaConf) < int(MaCurrent):
-            Domoticz.Log("Major version upgrade: {0} -> {1}".format(MaConf,MaCurrent))
-            logging.info("Major version upgrade: {0} -> {1}".format(MaConf,MaCurrent))
-            #add code to perform MAJOR upgrades
-            if int(MaConf) < 3:
-                can_continue = self.updateToEx()
-        elif int(MiConf) < int(MiCurrent):
-            Domoticz.Debug("Minor version upgrade: {0} -> {1}".format(MiConf,MiCurrent))
-            logging.debug("Minor version upgrade: {0} -> {1}".format(MiConf,MiCurrent))
-
-        elif int(PaConf) < int(PaCurrent):
-            Domoticz.Debug("Patch version upgrade: {0} -> {1}".format(PaConf,PaCurrent))
-            logging.debug("Patch version upgrade: {0} -> {1}".format(PaConf,PaCurrent))
-            #add code to perform PATCH upgrades, if any
-        if ConfVersion != version and can_continue:
-            #store new version info
-            self._setVersion(MaCurrent,MiCurrent,PaCurrent)
-        return can_continue
-
     def create_devices(self, filtered_devices):
         logging.debug("create_devices: devices found, domoticz: "+str(len(Devices))+" API: "+str(len(filtered_devices)))
         created_devices = 0
@@ -744,14 +659,6 @@ class BasePlugin:
             Domoticz.Log("Existing devices detected. Will retain and update them.")
             return True
 
-    def _setVersion(self, major, minor, patch):
-        #set configs
-        logging.debug("Setting version to {0}.{1}.{2}".format(major, minor, patch))
-        setConfigItem(Key="MajorVersion", Value=major)
-        setConfigItem(Key="MinorVersion", Value=minor)
-        setConfigItem(Key="patchVersion", Value=patch)
-        setConfigItem(Key="plugin version", Value="{0}.{1}.{2}".format(major, minor, patch))
-
     def load_config_txt(self, log=False):
         config_path = os.path.join(os.path.dirname(__file__), "config.txt")
         if not os.path.exists(config_path):
@@ -771,18 +678,10 @@ class BasePlugin:
                     val = value.strip()
 
                     try:
-                        if key == "REFRESH_DAY":
-                            self.dayInterval = int(val)
-                        elif key == "REFRESH_NIGHT":
-                            self.nightInterval = int(val)
-                        elif key == "TEMP_DELAY":
+                        if key == "TEMP_DELAY":
                             self.temp_delay = int(val)
                         elif key == "TEMP_TIME":
                             self.temp_time = int(val)
-                        elif key == "SUNRISE_DELAY":
-                            self.sunriseDelay = int(val)
-                        elif key == "SUNSET_DELAY":
-                            self.sunsetDelay = int(val)
                         elif key == "DOMOTICZ_HOST":
                             self.domoticz_host = val
                         elif key == "DOMOTICZ_PORT":
@@ -793,10 +692,8 @@ class BasePlugin:
             if log:
                 Domoticz.Log(
                     f"config.txt loaded succesfully: "
-                    f"Host={self.domoticz_host}:{self.domoticz_port}, "
-                    f"Day={self.dayInterval}s, Night={self.nightInterval}s, "
-                    f"SunriseDelay={self.sunriseDelay}m, SunsetDelay={self.sunsetDelay}m, "
-                    f"Temp={self.temp_delay}s voor {self.temp_time // 60}m"
+                    f"Host IP ={self.domoticz_host}:{self.domoticz_port}, "
+                    f"Temp. polling ={self.temp_delay}s for {self.temp_time // 60}min"
                 )
 
         except Exception as e:

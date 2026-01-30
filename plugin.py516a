@@ -4,10 +4,10 @@
 # 
 # All credits for the plugin are for Nonolk, who is the origin plugin creator
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.1.7" externallink="https://github.com/MadPatrick/somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.1.6" externallink="https://github.com/MadPatrick/somfy">
     <description>
         <br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
-        Version: 5.1.7
+        Version: 5.1.6
         <br/>This plugin connects to the Tahoma or Connexoon box either via the web API or via local access.
         <br/>Various devices are supported (RollerShutter, LightSensor, Screen, Awning, Window, VenetianBlind, etc.).
         <br/>For new devices, please raise a ticket at the Github link above.
@@ -19,6 +19,8 @@
             <li>Debug: allows to set log level and specify log file location</li>
         </ol>
         <br/><font color="yellow">Please put in the additional parameters in the config.txt file in the plugin folder</font>
+        <br/>
+        <br/>You can change the parameters and it will reload the config.txt at midnight. No need to restart the app for the config.txt changes
         <br/>
         <br/>
 <table border="1" cellpadding="4" cellspacing="0" width="50%">
@@ -38,13 +40,15 @@
         <td><b>Refresh interval</b></td>
         <td>How often must the devices be polled?
         <br/>Enter two numbers separated by a semicolon (;)
-        <br/>The first number is for day refresh polling (in seconds), the second is for night refresh polling (in seconds).</td>
+        <br/>The first number is for day refresh polling (in seconds), the second is for night refresh polling (in seconds).  
+        <br/>If this parameter is set in config.txt, it will override this setting.</td>
     </tr>
     <tr>
         <td><b>Night Mode</b></td>
         <td>When should the night mode start?
         <br/>Enter two numbers separated by a semicolon (;).
-        <br/>The first number is the time (in minutes) before sunrise, and the second number is the time after sunset.</td>
+        <br/>The first number is the time (in minutes) before sunrise, and the second number is the time after sunset.  
+        <br/>If this parameter is set in config.txt, it will override this setting</td>
     </tr>
     <tr>
         <td><b>Connection</b></td>
@@ -138,7 +142,7 @@ class BasePlugin:
         self.last_daily_refresh = None
         self.last_sunrise = None
         self.last_sunset = None
-        # defaults
+        # defaults config.txt
         self.domoticz_host = "127.0.0.1"
         self.domoticz_port = "8080"
         self.dayInterval = 30
@@ -148,6 +152,7 @@ class BasePlugin:
         self.temp_delay = 10
         self.temp_time = 60
         self.temp_interval_end = 0
+        self.last_config_mtime = 0
     
     def onStart(self):
         if os.path.exists(Parameters["Mode5"]):
@@ -287,6 +292,8 @@ class BasePlugin:
         if self.last_daily_refresh == today:
             return
 
+        self.load_config_txt(log=False)
+
         # === 2. Sunrise/sunset retrieval ===
         try:
             api_url = f"http://{self.domoticz_host}:{self.domoticz_port}/json.htm?type=command&param=getSunRiseSet"
@@ -340,6 +347,43 @@ class BasePlugin:
         night_start_str = f"{night_start_hour:02d}:{night_start_min:02d}"
 
         Domoticz.Log(f"Day mode starts at {day_start_str} | Night mode starts at {night_start_str}")
+
+    def check_config_update(self):
+        config_path = os.path.join(os.path.dirname(__file__), "config.txt")
+        if not os.path.exists(config_path):
+            return  # geen config.txt, niks doen
+
+        # Kijk naar de laatste wijzigingstijd van het bestand
+        mtime = os.path.getmtime(config_path)
+        if hasattr(self, 'last_config_mtime') and mtime <= self.last_config_mtime:
+            return  # geen nieuwe wijziging sinds laatste check
+
+        # Bestand is gewijzigd, inlezen en toepassen
+        self.last_config_mtime = mtime
+        self.load_config_txt(log=True)  # bestaande functie in jouw plugin
+    
+        # --- Dag/nacht tijden loggen ---
+        if hasattr(self, 'log_day_night_times'):
+            self.log_day_night_times()  # direct loggen
+
+        Domoticz.Log("config.txt changed. New settings will be used")
+
+        # Zet het runCounter opnieuw op basis van de nieuwe dag/nacht interval
+        now_dt = datetime.datetime.now()
+        now_minutes = now_dt.hour * 60 + now_dt.minute
+        if self.last_sunrise and self.last_sunset:
+            sr_hour, sr_min = map(int, self.last_sunrise.split(':'))
+            ss_hour, ss_min = map(int, self.last_sunset.split(':'))
+            sunrise = sr_hour * 60 + sr_min
+            sunset = ss_hour * 60 + ss_min
+        else:
+            sunrise = 360  # 06:00
+            sunset = 1320  # 22:00
+
+        if sunrise - self.sunriseDelay <= now_minutes < sunset + self.sunsetDelay:
+            self.runCounter = self.dayInterval
+        else:
+            self.runCounter = self.nightInterval
 
     def onMessage(self, Connection, Data):
         Domoticz.Error("onMessage called but not implemented")
@@ -425,14 +469,19 @@ class BasePlugin:
 
     def onHeartbeat(self):
         self.runCounter -= 1
+
         if not self.enabled:
             return False
 
-        self.refresh_daily_data()
+        # Check config.txt updates
+        self.check_config_update()
 
         now_dt = datetime.datetime.now()
         now_minutes = now_dt.hour * 60 + now_dt.minute
 
+        # 1. Daily data refresh (config & sun times)
+        self.refresh_daily_data()
+        
         # 2. Set the default interval based on time (Day/Night)
         sunrise_str = self.last_sunrise or "06:00"
         sunset_str = self.last_sunset or "22:00"
@@ -506,6 +555,7 @@ class BasePlugin:
 
             if (dataset["deviceURL"].startswith("io://")):
                 dev = dataset["deviceURL"]
+#                deviceClassTrig = dataset["deviceClass"]
                 deviceClassTrig = dataset.get("deviceClass")
                 level = 0
                 status_num = 0
@@ -678,10 +728,18 @@ class BasePlugin:
                     val = value.strip()
 
                     try:
-                        if key == "TEMP_DELAY":
+                        if key == "REFRESH_DAY":
+                            self.dayInterval = int(val)
+                        elif key == "REFRESH_NIGHT":
+                            self.nightInterval = int(val)
+                        elif key == "TEMP_DELAY":
                             self.temp_delay = int(val)
                         elif key == "TEMP_TIME":
                             self.temp_time = int(val)
+                        elif key == "SUNRISE_DELAY":
+                            self.sunriseDelay = int(val)
+                        elif key == "SUNSET_DELAY":
+                            self.sunsetDelay = int(val)
                         elif key == "DOMOTICZ_HOST":
                             self.domoticz_host = val
                         elif key == "DOMOTICZ_PORT":
@@ -692,8 +750,10 @@ class BasePlugin:
             if log:
                 Domoticz.Log(
                     f"config.txt loaded succesfully: "
-                    f"Host IP ={self.domoticz_host}:{self.domoticz_port}, "
-                    f"Temp. polling ={self.temp_delay}s for {self.temp_time // 60}min"
+                    f"Host={self.domoticz_host}:{self.domoticz_port}, "
+                    f"Day={self.dayInterval}s, Night={self.nightInterval}s, "
+                    f"SunriseDelay={self.sunriseDelay}m, SunsetDelay={self.sunsetDelay}m, "
+                    f"Temp={self.temp_delay}s voor {self.temp_time // 60}m"
                 )
 
         except Exception as e:

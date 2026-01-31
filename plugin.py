@@ -4,10 +4,11 @@
 # 
 # All credits for the plugin are for Nonolk, who is the origin plugin creator
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.1.8" externallink="https://github.com/MadPatrick/somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.1.9" externallink="https://github.com/MadPatrick/somfy">
     <description>
         <br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
-        Version: 5.1.8
+        Version: 5.1.9
+        Version: 5.1.9
         <br/>This plugin connects to the Tahoma or Connexoon box either via the web API or via local access.
         <br/>Various devices are supported (RollerShutter, LightSensor, Screen, Awning, Window, VenetianBlind, etc.).
         <br/>For new devices, please raise a ticket at the Github link above.
@@ -111,7 +112,6 @@
 # Tahoma/Connexoon IO blind plugin
 import DomoticzEx as Domoticz
 import json
-#import sys
 import logging
 import exceptions
 import time
@@ -121,7 +121,6 @@ import os
 import math
 from tahoma_local import SomfyBox
 import utils
-#import requests
 import urllib.request
 
 class BasePlugin:
@@ -148,6 +147,7 @@ class BasePlugin:
         self.temp_delay = 10
         self.temp_time = 60
         self.temp_interval_end = 0
+        self._last_mode = None  # Houdt de vorige modus bij
     
     def onStart(self):
         if os.path.exists(Parameters["Mode5"]):
@@ -158,7 +158,7 @@ class BasePlugin:
         log_fullname = os.path.join(log_dir, self.log_filename)
         Domoticz.Log("Starting Tahoma blind plugin, logging to file {0}".format(log_fullname))
 
-        self.logger = logging.getLogger('root')
+#        self.logger = logging.getLogger('root')
 
         if Parameters["Mode6"] == "Debug":
             Domoticz.Debugging(2)
@@ -218,43 +218,6 @@ class BasePlugin:
             return False
 
         self.setup_and_sync_devices(pin)
-
-#    def check_config_update(self):
-#        config_path = os.path.join(os.path.dirname(__file__), "config.txt")
-#       if not os.path.exists(config_path):
-#            return  # geen config.txt, niks doen
-#
-#        # Kijk naar de laatste wijzigingstijd van het bestand
-#        mtime = os.path.getmtime(config_path)
-#        if hasattr(self, 'last_config_mtime') and mtime <= self.last_config_mtime:
-#            return  # geen nieuwe wijziging sinds laatste check
-#
-#        # Bestand is gewijzigd, inlezen en toepassen
-#        self.last_config_mtime = mtime
-#        self.load_config_txt(log=True)
-#
-#        # --- Dag/nacht tijden loggen ---
-#        if hasattr(self, 'log_day_night_times'):
-#            self.log_day_night_times()  # direct loggen
-#
-#        Domoticz.Log("config.txt changed. New settings will be used")
-#
-#        # Zet het runCounter opnieuw op basis van de nieuwe dag/nacht interval
-#        now_dt = datetime.datetime.now()
-#        now_minutes = now_dt.hour * 60 + now_dt.minute
-#        if self.last_sunrise and self.last_sunset:
-#            sr_hour, sr_min = map(int, self.last_sunrise.split(':'))
-#            ss_hour, ss_min = map(int, self.last_sunset.split(':'))
-#            sunrise = sr_hour * 60 + sr_min
-#            sunset = ss_hour * 60 + ss_min
-#        else:
-#            sunrise = 360  # 06:00
-#            sunset = 1320  # 22:00
-#
-#        if sunrise - self.sunriseDelay <= now_minutes < sunset + self.sunsetDelay:
-#            self.runCounter = self.dayInterval
-#        else:
-#            self.runCounter = self.nightInterval
 
     def setup_and_sync_devices(self, pin):
         if not self.tahoma.logged_in:
@@ -443,7 +406,6 @@ class BasePlugin:
             self.tahoma.send_command(self.command_data)
             self.temp_interval_end = time.time() + self.temp_time
             self.runCounter = 0
-            #Domoticz.Log(f"Fast poling: TEMP_DELAY={self.temp_delay}, TEMP_TIME={self.temp_time}")
 
         except (exceptions.TooManyRetries,
                 exceptions.FailureWithErrorCode,
@@ -464,9 +426,6 @@ class BasePlugin:
 
         if not self.enabled:
             return False
-        mode_label = "DAY-MODE"
-        # Check config updates
-        #self.check_config_update()
 
         # Daily refresh (sunrise/sunset)
         self.refresh_daily_data()
@@ -483,12 +442,21 @@ class BasePlugin:
         sunrise_minutes = sr_hour * 60 + sr_min
         sunset_minutes  = ss_hour * 60 + ss_min
 
+        # Check day/night mode
         if sunrise_minutes - self.sunriseDelay <= now_minutes < sunset_minutes + self.sunsetDelay:
             standard_interval = self.dayInterval
-            mode_label = "DAY-MODE"
+            status_label = "DAY-MODE"
         else:
             standard_interval = self.nightInterval
-            mode_label = "NIGHT-MODE"
+            status_label = "NIGHT-MODE"
+
+        # Log bij modus-overgang, altijd checken
+        if self._last_mode != status_label:
+            Domoticz.Status(f"Mode switched to {status_label}. Polling interval is now {standard_interval}s")
+            logging.info(f"Mode switched to {status_label}. Polling interval is now {standard_interval}s")
+            self._last_mode = status_label
+            
+        #self.log_changes(self.runCounter, self.last_sunrise, self.last_sunset, "Daily refresh")
 
         # Temporary fast polling after command
         if time.time() < self.temp_interval_end:

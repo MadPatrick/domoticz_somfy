@@ -74,7 +74,7 @@ Before installation, register your Somfy products and add them to your Tahoma or
 - [Create Somfy account](https://www.somfy.nl/nieuw-account-aanmaken)  
 - [Tahoma login](https://www.tahomalink.com/enduser-mobile-web/steer-html5-client/tahoma/)
 
----
+Activating this mode will enable a local API on your TaHoma and Connexoon box. Be aware that Somfy will not be able to provide support for usage of this API.
 
 ## 💻 Installation
 
@@ -149,6 +149,7 @@ This allows you to change settings **without restarting Domoticz**.
 ```
 domoticz/plugins/somfy/config.txt
 ```
+Remove the # for the setting you want to use in config.txt
 
 🔄 **Reloading config.txt**
 

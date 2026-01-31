@@ -20,7 +20,7 @@ class Listener:
     @property
     def valid(self):
         self.__valid = self.__listener_expiry > datetime.datetime.now()
-        logging.debug("listener vald: self.__listener_expiry = " + self.__listener_expiry.strftime("%Y-%m-%d %H:%M:%S") + " self.__valid = " + str(self.__valid))
+        logging.debug("listener valid: self.__listener_expiry = " + self.__listener_expiry.strftime("%Y-%m-%d %H:%M:%S") + " self.__valid = " + str(self.__valid))
         return self.__valid
 
     @valid.setter

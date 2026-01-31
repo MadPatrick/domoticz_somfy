@@ -64,7 +64,7 @@
     </tr>
     <tr>
         <td><b>Reset token</b></td>
-        <td>Set to true to request a new token. Can be used when you get access denied</td>
+        <td>Set to True to request a new token. Can be used when you get access denied</td>
     </tr>
     <tr>
         <td><b>Log file location</b></td>
@@ -78,19 +78,19 @@
     <br/>
 </description>
     <params>
-        <param field="Username" label="Username" width="200px" required="true" default=""/>
-        <param field="Password" label="Password" width="200px" required="true" default="" password="true"/>
+        <param field="Username" label="Username" width="200px" required="True" default=""/>
+        <param field="Password" label="Password" width="200px" required="True" default="" password="True"/>
         <param field="Mode2" label="Refresh interval" width="100px" default="30;900"/>
         <param field="Mode3" label="Night Mode" width="100px" default="30;60"/>
         <param field="Mode4" label="Connection" width="100px">
             <description><br/>Somfy is depreciating the Web access, so it is better to use the local API</description>
             <options>
                 <option label="Web" value="Web"/>
-                <option label="Local" value="Local" default="true"/>
+                <option label="Local" value="Local" default="True"/>
             </options>
         </param>
-        <param field="Address" label="Gateway PIN" width="150px" required="true" default="1234-1234-1234"/>
-        <param field="Port" label="Portnumber Tahoma box" width="100px" required="true" default="8443"/>
+        <param field="Address" label="Gateway PIN" width="150px" required="True" default="1234-1234-1234"/>
+        <param field="Port" label="Portnumber Tahoma box" width="100px" required="True" default="8443"/>
         <param field="Mode1" label="Reset token" width="100px">            
             <options>
                 <option label="False" value="False" default="True"/>
@@ -101,7 +101,7 @@
         <param field="Mode6" label="Debug logging" width="100px">
             <options>
                 <option label="True" value="Debug"/>
-                <option label="False" value="Normal"  default="true" />
+                <option label="False" value="Normal"  default="True" />
             </options>
         </param>
     </params>
@@ -632,7 +632,7 @@ class BasePlugin:
                     logging.debug("create_device: device in filter_list is of type string, need to convert")
                     device = json.loads(device)
                 logging.debug("create_devices: check if need to create device: "+device["label"])
-                if device["label"] in Devices:
+                if device["deviceURL"] in Devices:
                     logging.debug("create_devices: step 1, do not create new device: "+device["label"]+", device already exists")
                     found = True
                     #break

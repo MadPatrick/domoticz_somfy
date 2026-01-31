@@ -74,7 +74,7 @@ Before installation, register your Somfy products and add them to your Tahoma or
 - [Create Somfy account](https://www.somfy.nl/nieuw-account-aanmaken)  
 - [Tahoma login](https://www.tahomalink.com/enduser-mobile-web/steer-html5-client/tahoma/)
 
----
+Activating this mode will enable a local API on your TaHoma and Connexoon box. Be aware that Somfy will not be able to provide support for usage of this API.
 
 ## 💻 Installation
 
@@ -149,6 +149,7 @@ This allows you to change settings **without restarting Domoticz**.
 ```
 domoticz/plugins/somfy/config.txt
 ```
+Remove the # for the setting you want to use in config.txt
 
 🔄 **Reloading config.txt**
 
@@ -175,9 +176,6 @@ TEMP_TIME=60
 ```
 Remove the # for the setting you want to use in config.txt
 
-You need to enable access for local networks to use the sunset/sunrise data from your Domoticz
-<img width="546" height="258" alt="image" src="https://github.com/user-attachments/assets/45159ce0-2ac6-4868-8f89-6fad213175f7" />
-
 ---
 ### 🔄 Slider Status in Domoticz
 If the slider positions do not match your preferences (Open = 0%, Close = 100%), you can reverse the slider for each device:
@@ -187,8 +185,7 @@ If the slider positions do not match your preferences (Open = 0%, Close = 100%),
 3. Move the device a few times to calibrate
 (To set the position correctly move your devices a few time)
 
-<img width="635" height="338" alt="image" src="https://github.com/user-attachments/assets/0b9aa4b0-754c-4764-9801-4a9dd407abbb" />
-
+![Domoticz - Devices_613_LightEdit](https://user-images.githubusercontent.com/81873830/206902008-46de4127-313e-4c0a-ba2a-3c729762734a.png)
 
 ## 🔄 Update the plugin:
 When there an update of the plugin you can easlily do an update by:

@@ -10,7 +10,9 @@ import listener
 import DomoticzEx as Domoticz
 
 import requests.packages.urllib3
-requests.packages.urllib3.disable_warnings()
+#requests.packages.urllib3.disable_warnings()
+import urllib3
+urllib3.disable_warnings()
 
 class TahomaWebApi:
     base_url_web = "https://ha101-1.overkiz.com"

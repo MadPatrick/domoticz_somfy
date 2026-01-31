@@ -7,7 +7,7 @@ class TahomaException(Exception):
         self.message = message
         super().__init__(self.message)
 
-    def __str(self):
+    def __str__(self):
         return str(self.message)
         
 class TooManyRetries(TahomaException):

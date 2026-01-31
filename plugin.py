@@ -64,7 +64,7 @@
     </tr>
     <tr>
         <td><b>Reset token</b></td>
-        <td>Set to true to request a new token. Can be used when you get access denied</td>
+        <td>Set to True to request a new token. Can be used when you get access denied</td>
     </tr>
     <tr>
         <td><b>Log file location</b></td>
@@ -78,19 +78,19 @@
     <br/>
 </description>
     <params>
-        <param field="Username" label="Username" width="200px" required="true" default=""/>
-        <param field="Password" label="Password" width="200px" required="true" default="" password="true"/>
+        <param field="Username" label="Username" width="200px" required="True" default=""/>
+        <param field="Password" label="Password" width="200px" required="True" default="" password="True"/>
         <param field="Mode2" label="Refresh interval" width="100px" default="30;900"/>
         <param field="Mode3" label="Night Mode" width="100px" default="30;60"/>
         <param field="Mode4" label="Connection" width="100px">
             <description><br/>Somfy is depreciating the Web access, so it is better to use the local API</description>
             <options>
                 <option label="Web" value="Web"/>
-                <option label="Local" value="Local" default="true"/>
+                <option label="Local" value="Local" default="True"/>
             </options>
         </param>
-        <param field="Address" label="Gateway PIN" width="150px" required="true" default="1234-1234-1234"/>
-        <param field="Port" label="Portnumber Tahoma box" width="100px" required="true" default="8443"/>
+        <param field="Address" label="Gateway PIN" width="150px" required="True" default="1234-1234-1234"/>
+        <param field="Port" label="Portnumber Tahoma box" width="100px" required="True" default="8443"/>
         <param field="Mode1" label="Reset token" width="100px">            
             <options>
                 <option label="False" value="False" default="True"/>
@@ -101,7 +101,7 @@
         <param field="Mode6" label="Debug logging" width="100px">
             <options>
                 <option label="True" value="Debug"/>
-                <option label="False" value="Normal"  default="true" />
+                <option label="False" value="Normal"  default="True" />
             </options>
         </param>
     </params>
@@ -195,14 +195,15 @@ class BasePlugin:
             
         self.runCounter = self.dayInterval
         Domoticz.Heartbeat(1)
-        
+
+        # Load the settings from config.txt
         self.load_config_txt(log=True)
         self.last_config_day = datetime.datetime.now().day
         self.enabled = True
-        
+
         pin = Parameters["Address"]
         port = int(Parameters["Port"])
-        
+
         if Parameters["Mode4"] == "Local":
             self.tahoma = SomfyBox(pin, port)
             self.local = True
@@ -215,46 +216,45 @@ class BasePlugin:
         except Exception as exp:
             Domoticz.Error("Failed to login: " + str(exp))
             return False
-        
+
         self.setup_and_sync_devices(pin)
-        
-    def check_config_update(self):
-        config_path = os.path.join(os.path.dirname(__file__), "config.txt")
-        if not os.path.exists(config_path):
-            return  # geen config.txt, niks doen
 
-        # Kijk naar de laatste wijzigingstijd van het bestand
-        mtime = os.path.getmtime(config_path)
-        if hasattr(self, 'last_config_mtime') and mtime <= self.last_config_mtime:
-            return  # geen nieuwe wijziging sinds laatste check
-
-        # Bestand is gewijzigd, inlezen en toepassen
-        self.last_config_mtime = mtime
-        self.load_config_txt(log=True)  # bestaande functie in jouw plugin
-
-        # --- Dag/nacht tijden loggen ---
-        if hasattr(self, 'log_day_night_times'):
-            self.log_day_night_times()  # direct loggen
-
-        Domoticz.Log("config.txt changed. New settings will be used")
-
-        # Zet het runCounter opnieuw op basis van de nieuwe dag/nacht interval
-        now_dt = datetime.datetime.now()
-        now_minutes = now_dt.hour * 60 + now_dt.minute
-        if self.last_sunrise and self.last_sunset:
-            sr_hour, sr_min = map(int, self.last_sunrise.split(':'))
-            ss_hour, ss_min = map(int, self.last_sunset.split(':'))
-            sunrise = sr_hour * 60 + sr_min
-            sunset = ss_hour * 60 + ss_min
-        else:
-            sunrise = 360  # 06:00
-            sunset = 1320  # 22:00
-
-        if sunrise - self.sunriseDelay <= now_minutes < sunset + self.sunsetDelay:
-            self.runCounter = self.dayInterval
-        else:
-            self.runCounter = self.nightInterval
-
+#    def check_config_update(self):
+#        config_path = os.path.join(os.path.dirname(__file__), "config.txt")
+#       if not os.path.exists(config_path):
+#            return  # geen config.txt, niks doen
+#
+#        # Kijk naar de laatste wijzigingstijd van het bestand
+#        mtime = os.path.getmtime(config_path)
+#        if hasattr(self, 'last_config_mtime') and mtime <= self.last_config_mtime:
+#            return  # geen nieuwe wijziging sinds laatste check
+#
+#        # Bestand is gewijzigd, inlezen en toepassen
+#        self.last_config_mtime = mtime
+#        self.load_config_txt(log=True)
+#
+#        # --- Dag/nacht tijden loggen ---
+#        if hasattr(self, 'log_day_night_times'):
+#            self.log_day_night_times()  # direct loggen
+#
+#        Domoticz.Log("config.txt changed. New settings will be used")
+#
+#        # Zet het runCounter opnieuw op basis van de nieuwe dag/nacht interval
+#        now_dt = datetime.datetime.now()
+#        now_minutes = now_dt.hour * 60 + now_dt.minute
+#        if self.last_sunrise and self.last_sunset:
+#            sr_hour, sr_min = map(int, self.last_sunrise.split(':'))
+#            ss_hour, ss_min = map(int, self.last_sunset.split(':'))
+#            sunrise = sr_hour * 60 + sr_min
+#            sunset = ss_hour * 60 + ss_min
+#        else:
+#            sunrise = 360  # 06:00
+#            sunset = 1320  # 22:00
+#
+#        if sunrise - self.sunriseDelay <= now_minutes < sunset + self.sunsetDelay:
+#            self.runCounter = self.dayInterval
+#        else:
+#            self.runCounter = self.nightInterval
 
     def setup_and_sync_devices(self, pin):
         if not self.tahoma.logged_in:
@@ -632,7 +632,7 @@ class BasePlugin:
                     logging.debug("create_device: device in filter_list is of type string, need to convert")
                     device = json.loads(device)
                 logging.debug("create_devices: check if need to create device: "+device["label"])
-                if device["label"] in Devices:
+                if device["deviceURL"] in Devices:
                     logging.debug("create_devices: step 1, do not create new device: "+device["label"]+", device already exists")
                     found = True
                     #break
@@ -721,7 +721,7 @@ class BasePlugin:
                         self.domoticz_port = val
 
             # Deze logregel is cruciaal om te zien of het gelukt is
-            Domoticz.Log(f"Somfy: Config geladen. Gebruik nu Temp Polling: {self.temp_delay}s voor {self.temp_time}s")
+            Domoticz.Log(f"Somfy: Config.txt loaded. Temp Polling set to: {self.temp_delay}s voor {self.temp_time}s")
             
         except Exception as e:
             Domoticz.Error(f"Somfy: Fout in load_config_txt: {str(e)}")

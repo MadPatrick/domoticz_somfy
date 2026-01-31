@@ -4,10 +4,10 @@
 # 
 # All credits for the plugin are for Nonolk, who is the origin plugin creator
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.1.7" externallink="https://github.com/MadPatrick/somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.1.8" externallink="https://github.com/MadPatrick/somfy">
     <description>
         <br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
-        Version: 5.1.7
+        Version: 5.1.8
         <br/>This plugin connects to the Tahoma or Connexoon box either via the web API or via local access.
         <br/>Various devices are supported (RollerShutter, LightSensor, Screen, Awning, Window, VenetianBlind, etc.).
         <br/>For new devices, please raise a ticket at the Github link above.
@@ -81,8 +81,8 @@
         <param field="Username" label="Username" width="200px" required="true" default=""/>
         <param field="Password" label="Password" width="200px" required="true" default="" password="true"/>
         <param field="Mode2" label="Refresh interval" width="100px" default="30;900"/>
-        <param field="Mode3" label="Night Mode" width="200px" default="30;60"/>
-        <param field = "Mode4" label="Connection" width="100px">
+        <param field="Mode3" label="Night Mode" width="100px" default="30;60"/>
+        <param field="Mode4" label="Connection" width="100px">
             <description><br/>Somfy is depreciating the Web access, so it is better to use the local API</description>
             <options>
                 <option label="Web" value="Web"/>
@@ -90,7 +90,7 @@
             </options>
         </param>
         <param field="Address" label="Gateway PIN" width="150px" required="true" default="1234-1234-1234"/>
-        <param field="Port" label="Portnumber Tahoma box" width="30px" required="true" default="8443"/>
+        <param field="Port" label="Portnumber Tahoma box" width="100px" required="true" default="8443"/>
         <param field="Mode1" label="Reset token" width="100px">            
             <options>
                 <option label="False" value="False" default="True"/>
@@ -111,7 +111,7 @@
 # Tahoma/Connexoon IO blind plugin
 import DomoticzEx as Domoticz
 import json
-import sys
+#import sys
 import logging
 import exceptions
 import time
@@ -121,7 +121,7 @@ import os
 import math
 from tahoma_local import SomfyBox
 import utils
-import requests
+#import requests
 import urllib.request
 
 class BasePlugin:
@@ -166,16 +166,15 @@ class BasePlugin:
             logging.basicConfig(format='%(asctime)s - %(levelname)-8s - %(filename)-18s - %(message)s', filename=log_fullname,level=logging.DEBUG)
         else:
             logging.basicConfig(format='%(asctime)s - %(levelname)-8s - %(filename)-18s - %(message)s', filename=log_fullname,level=logging.INFO)
-        Domoticz.Debug("os.path.exists(Parameters['Mode5']) = {}".format(os.path.exists(Parameters["Mode5"])))
+        
         logging.info("starting plugin version "+Parameters["Version"])
  
-        # Check Mode2 and set default as empty or invalid
+        # Check Mode2 en set default
         if not Parameters.get('Mode2') or ';' not in Parameters['Mode2']:
-            Domoticz.Log("Mode2 leeg of ongeldig, instellen op standaard 30;900")
             Parameters['Mode2'] = "30;900"
-        # Check Mode3 (sunrise;sunset delay)
+        
+        # Check Mode3
         if not Parameters.get('Mode3') or ';' not in Parameters['Mode3']:
-            Domoticz.Log("Mode3 leeg of ongeldig, instellen op standaard 30;60")
             Parameters['Mode3'] = "30;60"
 
         try:
@@ -183,7 +182,6 @@ class BasePlugin:
             self.sunriseDelay = int(sr_delay_str.strip())
             self.sunsetDelay = int(ss_delay_str.strip())
         except Exception as e:
-            Domoticz.Error("Invalid Mode3 value, using defaults 30;60: " + str(e))
             self.sunriseDelay = 30
             self.sunsetDelay = 60
 
@@ -192,19 +190,19 @@ class BasePlugin:
             self.dayInterval = int(day_str.strip())
             self.nightInterval = int(night_str.strip())
         except Exception as e:
-            Domoticz.Error("Invalid Mode2 value, using defaults 30;900: " + str(e))
             self.dayInterval = 30
             self.nightInterval = 900
+            
         self.runCounter = self.dayInterval
         Domoticz.Heartbeat(1)
         
-        self.load_config_txt(log=True)
+        #self.load_config_txt(log=True)
+        self.last_config_day = datetime.datetime.now().day
         self.enabled = True
         
         pin = Parameters["Address"]
         port = int(Parameters["Port"])
         
-        Domoticz.Debug("starting to log in with mode " + Parameters["Mode4"])
         if Parameters["Mode4"] == "Local":
             self.tahoma = SomfyBox(pin, port)
             self.local = True
@@ -214,11 +212,49 @@ class BasePlugin:
 
         try:
             self.tahoma.tahoma_login(str(Parameters["Username"]), str(Parameters["Password"]))
-        except exceptions.LoginFailure as exp:
+        except Exception as exp:
             Domoticz.Error("Failed to login: " + str(exp))
             return False
         
         self.setup_and_sync_devices(pin)
+        
+    def check_config_update(self):
+        config_path = os.path.join(os.path.dirname(__file__), "config.txt")
+        if not os.path.exists(config_path):
+            return  # geen config.txt, niks doen
+
+        # Kijk naar de laatste wijzigingstijd van het bestand
+        mtime = os.path.getmtime(config_path)
+        if hasattr(self, 'last_config_mtime') and mtime <= self.last_config_mtime:
+            return  # geen nieuwe wijziging sinds laatste check
+
+        # Bestand is gewijzigd, inlezen en toepassen
+        self.last_config_mtime = mtime
+        self.load_config_txt(log=True)  # bestaande functie in jouw plugin
+
+        # --- Dag/nacht tijden loggen ---
+        if hasattr(self, 'log_day_night_times'):
+            self.log_day_night_times()  # direct loggen
+
+        Domoticz.Log("config.txt changed. New settings will be used")
+
+        # Zet het runCounter opnieuw op basis van de nieuwe dag/nacht interval
+        now_dt = datetime.datetime.now()
+        now_minutes = now_dt.hour * 60 + now_dt.minute
+        if self.last_sunrise and self.last_sunset:
+            sr_hour, sr_min = map(int, self.last_sunrise.split(':'))
+            ss_hour, ss_min = map(int, self.last_sunset.split(':'))
+            sunrise = sr_hour * 60 + sr_min
+            sunset = ss_hour * 60 + ss_min
+        else:
+            sunrise = 360  # 06:00
+            sunset = 1320  # 22:00
+
+        if sunrise - self.sunriseDelay <= now_minutes < sunset + self.sunsetDelay:
+            self.runCounter = self.dayInterval
+        else:
+            self.runCounter = self.nightInterval
+
 
     def setup_and_sync_devices(self, pin):
         if not self.tahoma.logged_in:
@@ -425,63 +461,61 @@ class BasePlugin:
 
     def onHeartbeat(self):
         self.runCounter -= 1
+
         if not self.enabled:
             return False
+        mode_label = "DAY-MODE"
+        # Check config updates
+        self.check_config_update()
 
+        # Daily refresh (sunrise/sunset)
         self.refresh_daily_data()
+        
+        now = datetime.datetime.now()
+        now_minutes = now.hour * 60 + now.minute
 
-        now_dt = datetime.datetime.now()
-        now_minutes = now_dt.hour * 60 + now_dt.minute
-
-        # 2. Set the default interval based on time (Day/Night)
         sunrise_str = self.last_sunrise or "06:00"
-        sunset_str = self.last_sunset or "22:00"
-        sr_hour, sr_min = map(int, sunrise_str.split(':'))
-        ss_hour, ss_min = map(int, sunset_str.split(':'))
-        sunrise = sr_hour * 60 + sr_min
-        sunset = ss_hour * 60 + ss_min
+        sunset_str  = self.last_sunset or "22:00"
 
-        if sunrise - self.sunriseDelay <= now_minutes < sunset + self.sunsetDelay:
+        sr_hour, sr_min = map(int, sunrise_str.split(":"))
+        ss_hour, ss_min = map(int, sunset_str.split(":"))
+
+        sunrise_minutes = sr_hour * 60 + sr_min
+        sunset_minutes  = ss_hour * 60 + ss_min
+
+        if sunrise_minutes - self.sunriseDelay <= now_minutes < sunset_minutes + self.sunsetDelay:
             standard_interval = self.dayInterval
-            status_label = "DAY-MODE"
+            mode_label = "DAY-MODE"
         else:
             standard_interval = self.nightInterval
-            status_label = "NIGHT-MODE"
+            mode_label = "NIGHT-MODE"
 
-        # 3. Check if the TEMPORARY interval (10s) is still active
+        # Temporary fast polling after command
         if time.time() < self.temp_interval_end:
             interval = self.temp_delay
-            if not hasattr(self, '_temp_log_active') or not self._temp_log_active:
+            if not getattr(self, "_temp_log_active", False):
                 remaining = math.ceil(self.temp_interval_end - time.time())
-                #Domoticz.Status(f"Action detected! Fast polling (10s) active for the next {remaining}s")
-                Domoticz.Status(f"Action detected! Fast polling ({self.temp_delay}s) active for the next {remaining}s")
+                Domoticz.Status(
+                    f"Action detected! Fast polling ({self.temp_delay}s) active for {remaining}s"
+                )
                 self._temp_log_active = True
         else:
             interval = standard_interval
-            if hasattr(self, '_temp_log_active') and self._temp_log_active:
-                Domoticz.Status(f"Fast polling ended. Returning to standard interval ({interval}s)")
+            if getattr(self, "_temp_log_active", False):
+                Domoticz.Status(
+                    f"Fast polling ended. Returning to standard interval ({interval}s)"
+                )
                 self._temp_log_active = False
 
-        # 4. Only log if something significant changes
-        if not hasattr(self, 'last_interval'): self.last_interval = None
-        
-        self.log_changes(interval, sunrise_str, sunset_str, status_label)
-
-        # 5. Poll Somfy box when counter is at zero
+        # Poll devices only when needed
         if self.runCounter <= 0 or self.heartbeat:
             if self.local or (self.tahoma.logged_in and not self.tahoma.startup):
                 try:
                     filtered_devices = self.tahoma.get_devices()
                     self.update_devices_status(utils.filter_states(filtered_devices))
-                    if hasattr(self, 'last_connection_error_time'):
-                        del self.last_connection_error_time
                 except Exception as exp:
-                    err_now = time.time()
-                    if not hasattr(self, 'last_connection_error_time') or (err_now - self.last_connection_error_time > 60):
-                        Domoticz.Error(f"Connection error: {str(exp)[:50]}")
-                        self.last_connection_error_time = err_now
+                    Domoticz.Error(f"Connection error: {exp}")
 
-            # Reset runCounter and heartbeat once at the bottom of the block
             self.runCounter = interval
             self.heartbeat = False
 
@@ -663,7 +697,7 @@ class BasePlugin:
         config_path = os.path.join(os.path.dirname(__file__), "config.txt")
         if not os.path.exists(config_path):
             if log:
-                Domoticz.Status("config.txt not found, using default values.")
+                Domoticz.Status("Somfy: config.txt niet gevonden op " + config_path)
             return
 
         try:
@@ -674,30 +708,23 @@ class BasePlugin:
                         continue
                 
                     key, value = line.split("=", 1)
-                    key = key.strip().upper()  # LET OP: gebruik UPPER voor jouw keys
+                    key = key.strip().upper()
                     val = value.strip()
 
-                    try:
-                        if key == "TEMP_DELAY":
-                            self.temp_delay = int(val)
-                        elif key == "TEMP_TIME":
-                            self.temp_time = int(val)
-                        elif key == "DOMOTICZ_HOST":
-                            self.domoticz_host = val
-                        elif key == "DOMOTICZ_PORT":
-                            self.domoticz_port = val
-                    except ValueError:
-                        Domoticz.Error(f"Invaldig value in config.txt for {key}: {val}")
+                    if key == "TEMP_DELAY":
+                        self.temp_delay = int(val)
+                    elif key == "TEMP_TIME":
+                        self.temp_time = int(val)
+                    elif key == "DOMOTICZ_HOST":
+                        self.domoticz_host = val
+                    elif key == "DOMOTICZ_PORT":
+                        self.domoticz_port = val
 
-            if log:
-                Domoticz.Log(
-                    f"config.txt loaded succesfully: "
-                    f"Host IP ={self.domoticz_host}:{self.domoticz_port}, "
-                    f"Temp. polling ={self.temp_delay}s for {self.temp_time // 60}min"
-                )
-
+            # Deze logregel is cruciaal om te zien of het gelukt is
+            Domoticz.Log(f"Somfy: Config geladen. Gebruik nu Temp Polling: {self.temp_delay}s voor {self.temp_time}s")
+            
         except Exception as e:
-            Domoticz.Error(f"Fout bij het laden van config.txt: {str(e)}")
+            Domoticz.Error(f"Somfy: Fout in load_config_txt: {str(e)}")
 
     def log_changes(self, interval, sunrise_str, sunset_str, status_label):
         """Logs changes in interval, sunrise, and sunset, only if they differ from last known values."""

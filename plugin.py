@@ -8,7 +8,6 @@
     <description>
         <br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
         Version: 5.1.9
-        Version: 5.1.9
         <br/>This plugin connects to the Tahoma or Connexoon box either via the web API or via local access.
         <br/>Various devices are supported (RollerShutter, LightSensor, Screen, Awning, Window, VenetianBlind, etc.).
         <br/>For new devices, please raise a ticket at the Github link above.

@@ -196,7 +196,7 @@ class BasePlugin:
         self.runCounter = self.dayInterval
         Domoticz.Heartbeat(1)
         
-        #self.load_config_txt(log=True)
+        self.load_config_txt(log=True)
         self.last_config_day = datetime.datetime.now().day
         self.enabled = True
         
@@ -466,7 +466,7 @@ class BasePlugin:
             return False
         mode_label = "DAY-MODE"
         # Check config updates
-        self.check_config_update()
+        #self.check_config_update()
 
         # Daily refresh (sunrise/sunset)
         self.refresh_daily_data()

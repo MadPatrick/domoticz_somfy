@@ -128,14 +128,15 @@ Add the hardware to your Domoticz system and fill in the required fields
 |--------------|--------------|
 | 👤 Username | Somfy account login |
 | 🔑 Password | Somfy account password |
+| 🌅 Sunrise/Sunset Delay (`Mode3`) | Delay in minutes for sunrise/sunset calculations. in minutes bedore sunrise and after sunset |
 | 🔄 Refresh Interval (`Mode2`) | `day;night` polling interval (in seconds) |
+| ⌛ Temp polling interval (`Mode5`) |  refresh time and duration |
 | 🌐 Connection (`Mode4`) | Local (recommended) or Web |
 | 📍 Gateway PIN | Your Somfy box PIN |
 | 🔁 Reset token (`Mode1`) | `False` by default; set `True` if token errors occur |
 | 🔢 Portnumber | Default `8443` |
-| 📂 Log file location (`Mode5`) |  default is the home directory, Optional for ex. `/var/log/` |
 | 🐞 Debug logging (`Mode6`) | `False` by default; `True` for verbose logs |
-| 🌅 Sunrise/Sunset Delay (`Mode3`) | Delay in minutes for sunrise/sunset calculations. in minutes bedore sunrise and after sunset |
+
 
 🔧 After saving the configuration, devices are automatically created in **Devices**.
 <img width="885" height="677" alt="image" src="https://github.com/user-attachments/assets/40ca094b-a2c9-4aa4-8f88-d79bda5a82a0" />
@@ -162,16 +163,6 @@ Invalid or missing values will fall back to default settings
 ```
 DOMOTICZ_HOST=127.0.0.1
 DOMOTICZ_PORT=8080
-# ---- REFRESH PARAMETERS FAST POLLING IN SECONDS ----
-TEMP_DELAY=10
-TEMP_TIME=60
-# ---- DON'T USE YET ---- REFRESH PARAMETERS POLLING IN SECONDS. USE SETTING PAGE
-# ---- THIS SETTING WILL OVERRULE THE DOMOTICZ SETUP PAGE
-#REFRESH_DAY=60
-#REFRESH_NIGHT=1800
-# ---- DON'T USE YET ---- REFRESH PARAMETERS SUNSET/SUNRISE IN MINUTES. USE SETTING PAGE
-#SUNRISE_DELAY=30
-#SUNET_DELAY=60
 
 ```
 Remove the # for the setting you want to use in config.txt

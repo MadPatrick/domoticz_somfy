@@ -46,6 +46,11 @@
         <br/>Enter two numbers separated by a semicolon (;).
         <br/>The first number is the time (in minutes) before sunrise, and the second number is the time after sunset.</td>
     </tr>
+        <tr>
+        <td><b>Temp polling interval</b></td>
+        <td>How often must the devices be polled?
+        <br/>Enter two numbers separated by a semicolon (;)</td>
+    </tr>
     <tr>
         <td><b>Connection</b></td>
         <td>Choose how to interact with the Somfy/Tahoma/Connexoon box:
@@ -65,10 +70,6 @@
     <tr>
         <td><b>Reset token</b></td>
         <td>Set to True to request a new token. Can be used when you get access denied</td>
-    </tr>
-    <tr>
-        <td><b>Log file location</b></td>
-        <td>Enter a location for the logfile (omit final /), or leave empty to create logfile in the Domoticz directory.<br/>Example for Linux: /var/log/</td>
     </tr>
     <tr>
         <td><b>Debug logging</b></td>
@@ -315,7 +316,7 @@ class BasePlugin:
 
     def refresh_daily_data(self):
         """
-            Refresh sunrise/sunset daily from Domoticz JSON API at a fixed time.
+        Refresh sunrise/sunset daily from Domoticz JSON API at a fixed time.
         Forces update at first plugin start.
         """
         now = datetime.datetime.now()
@@ -348,8 +349,6 @@ class BasePlugin:
                                                     second=0, microsecond=0)
 
                     self.log_day_night_times()
-
-                Domoticz.Status("Sunrise/sunset updated (scheduled refresh)")
                 Domoticz.Log(f"Sunrise/sunset refreshed @ {now.strftime('%H:%M')}: sunrise={self.last_sunrise} sunset={self.last_sunset}")
 
             except Exception as e:
@@ -361,7 +360,6 @@ class BasePlugin:
 
             # Update timestamp naar nu, zodat we niet meteen opnieuw refreshen
             self.last_sun_refresh_ts = now
-
 
     def log_day_night_times(self):
         if not self.last_sunrise or not self.last_sunset:

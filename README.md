@@ -140,7 +140,6 @@ Add the hardware to your Domoticz system and fill in the required fields
 
 
 🔧 After saving the configuration, devices are automatically created in **Devices**.
-<img width="885" height="677" alt="image" src="https://github.com/user-attachments/assets/40ca094b-a2c9-4aa4-8f88-d79bda5a82a0" />
 
 ## 🧾 config.txt (Advanced configuration)
 

@@ -120,7 +120,8 @@ In the Domoticz UI, navigate to the Hardware page.
 In the hardware dropdown list there will be an entry called "Somfy Tahoma or Connexoon plugin".
 Add the hardware to your Domoticz system and fill in the required fields
 
-![Domoticz - Hardware](https://user-images.githubusercontent.com/81873830/206902090-8d6cc4cb-a945-4779-87ab-a5ccadacc919.png)
+<img width="654" height="420" alt="image" src="https://github.com/user-attachments/assets/c04dec01-eefa-46b1-88ab-561f915b8e13" />
+
 
 👉 **Somfy Tahoma or Connexoon plugin**
 

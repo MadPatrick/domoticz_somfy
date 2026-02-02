@@ -73,14 +73,14 @@
     </tr>
     <tr>
         <td><b>Debug logging</b></td>
-        <td>Set to TRUE to enable debug logging for troubleshooting</td>
+        <td>Set to True to enable debug logging for troubleshooting</td>
     </tr>
     </table>
     <br/>
 </description>
     <params>
-        <param field="Username" label="Username" width="200px" required="True" default=""/>
-        <param field="Password" label="Password" width="200px" required="True" default="" password="True"/>
+        <param field="Username" label="Username" width="200px" required="true" default=""/>
+        <param field="Password" label="Password" width="200px" required="true" default="" password="true"/>
         <param field="Mode2" label="Refresh interval" width="100px" default="30;900"/>
         <param field="Mode3" label="Night Mode" width="100px" default="30;60"/>
         <param field="Mode5" label="Temp refresh interval" width="200px" default="15;120"/>
@@ -88,21 +88,21 @@
             <description><br/>Somfy is depreciating the Web access, so it is better to use the local API</description>
             <options>
                 <option label="Web" value="Web"/>
-                <option label="Local" value="Local" default="True"/>
+                <option label="Local" value="Local" default="true"/>
             </options>
         </param>
-        <param field="Address" label="Gateway PIN" width="150px" required="True" default="1234-1234-1234"/>
-        <param field="Port" label="Portnumber Tahoma box" width="100px" required="True" default="8443"/>
+        <param field="Address" label="Gateway PIN" width="150px" required="true" default="1234-1234-1234"/>
+        <param field="Port" label="Portnumber Tahoma box" width="100px" required="true" default="8443"/>
         <param field="Mode1" label="Reset token" width="100px">            
             <options>
-                <option label="False" value="False" default="True"/>
-                <option label="True" value="True" />
+                <option label="false" value="false" default="true"/>
+                <option label="true" value="true" />
             </options>
         </param>
         <param field="Mode6" label="Debug logging" width="100px">
             <options>
-                <option label="True" value="Debug"/>
-                <option label="False" value="Normal"  default="True" />
+                <option label="true" value="Debug"/>
+                <option label="false" value="Normal"  default="true" />
             </options>
         </param>
     </params>

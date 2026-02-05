@@ -34,6 +34,7 @@ class Tahoma:
         self.logged_in_expiry = 90 #expiry time out in seconds
         self.execId = None
         self.listener = listener.Listener(1)
+        Domoticz.Log("TaHoma WEB client loaded")
 
     @property
     def logged_in(self):

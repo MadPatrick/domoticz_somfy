@@ -151,6 +151,7 @@ class SomfyBox(TahomaWebApi):
         self.startup = True
         self.listener = listener.Listener(8)
         logging.debug("SomfyBox initialised")
+        Domoticz.Log("TaHoma LOCAL client loaded")
 
     def get_version(self):
         if self.token is None or self.token == "0":

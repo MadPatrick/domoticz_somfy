@@ -4,10 +4,10 @@
 # 
 # All credits for the plugin are for Nonolk, who is the origin plugin creator
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.2.0" externallink="https://github.com/MadPatrick/somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.2.1" externallink="https://github.com/MadPatrick/somfy">
     <description>
         <br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
-        Version: 5.2.0
+        Version: 5.2.1
         <br/>This plugin connects to the Tahoma or Connexoon box either via the web API or via local access.
         <br/>Various devices are supported (RollerShutter, LightSensor, Screen, Awning, Window, VenetianBlind, etc.).
         <br/>For new devices, please raise a ticket at the Github link above.
@@ -73,7 +73,7 @@
     </tr>
     <tr>
         <td><b>Debug logging</b></td>
-        <td>Set to True to enable debug logging for troubleshooting</td>
+        <td>Set to TRUE to enable debug logging for troubleshooting</td>
     </tr>
     </table>
     <br/>
@@ -131,7 +131,6 @@ class BasePlugin:
         self.command_data = None
         self.command = False
         self.actions_serialized = []
-
         self.log_filename = "somfy.log"
         self.local = False
 
@@ -141,7 +140,7 @@ class BasePlugin:
         # Sunrise/sunset / daily refresh
         self.last_sunrise = None
         self.last_sunset = None
-        self.sun_refresh_time = "02:00"  # vaste tijd
+        self.sun_refresh_time = "02:00"  # Fallback
         self.last_sun_refresh_ts = datetime.datetime.min  # timestamp van laatste refresh
 
         # Domoticz / polling defaults
@@ -151,9 +150,6 @@ class BasePlugin:
         self.nightInterval = 900
         self.sunriseDelay = 30
         self.sunsetDelay = 60
-        self.temp_delay = 10
-        self.temp_time = 60
-        self.temp_interval_end = 0
         self.temp_delay = 10     # fallback defaults
         self.temp_time  = 60     # fallback defaults
         self.temp_interval_end = 0
@@ -192,33 +188,33 @@ class BasePlugin:
             day_str, night_str = Parameters.get("Mode2", "30;900").split(";")
             self.dayInterval   = int(day_str.strip())
             self.nightInterval = int(night_str.strip())
-            Domoticz.Log(f"Somfy: Polling intervals Day / Night: {self.dayInterval}s and {self.nightInterval}s")
+            Domoticz.Log(f"Polling intervals Day / Night: {self.dayInterval}s and {self.nightInterval}s")
         except Exception as e:
             self.dayInterval   = 30
             self.nightInterval = 900
-            Domoticz.Error(f"Somfy: Failed to parse Mode2 for intervals, using defaults: {e}")
+            Domoticz.Error(f"Failed to parse Mode2 for intervals, using defaults: {e}")
 
         # --- Sunrise / Sunset delays (Mode3) ---
         try:
             sr_delay_str, ss_delay_str = Parameters.get("Mode3", "30;60").split(";")
             self.sunriseDelay = int(sr_delay_str.strip())
             self.sunsetDelay  = int(ss_delay_str.strip())
-            Domoticz.Log(f"Somfy: Sunrise / Sunset delays : {self.sunriseDelay}m and {self.sunsetDelay}m")
+            Domoticz.Log(f"Sunrise / Sunset delays : {self.sunriseDelay}m and {self.sunsetDelay}m")
         except Exception as e:
             self.sunriseDelay = 30
             self.sunsetDelay  = 60
-            Domoticz.Error(f"Somfy: Failed to parse Mode3 for sunrise/sunset delays, using defaults: {e}")
+            Domoticz.Error(f"Failed to parse Mode3 for sunrise/sunset delays, using defaults: {e}")
 
         # --- TEMP_DELAY / TEMP_TIME uit Mode5 ---
         try:
             delay_str, time_str = Parameters.get("Mode5", "10;60").split(";")
             self.temp_delay = int(delay_str.strip())
             self.temp_time  = int(time_str.strip())
-            Domoticz.Log(f"Somfy: Temp delay settings : {self.temp_delay}s delay for {self.temp_time}s")
+            Domoticz.Log(f"Temp delay settings : {self.temp_delay}s delay for {self.temp_time}s")
         except Exception as e:
             self.temp_delay = 10
             self.temp_time  = 60
-            Domoticz.Error(f"Somfy: Failed to parse Mode5 for TEMP settings, using defaults: {e}")
+            Domoticz.Error(f"Failed to parse Mode5 for TEMP settings, using defaults: {e}")
 
         # --- Set initial runCounter for heartbeat ---
         self.runCounter = self.dayInterval
@@ -251,7 +247,6 @@ class BasePlugin:
             return False
 
         self.setup_and_sync_devices(pin)
-
 
     def setup_and_sync_devices(self, pin):
         if not self.tahoma.logged_in:
@@ -457,7 +452,7 @@ class BasePlugin:
                 exceptions.FailureWithErrorCode,
                 exceptions.FailureWithoutErrorCode,
                 Exception) as exp:
-            Domoticz.Error(f"Somfy: Failed to send command: {exp}")
+            Domoticz.Error(f"Failed to send command: {exp}")
             if not self.local:
                 self.actions_serialized = []
             return False
@@ -708,7 +703,7 @@ class BasePlugin:
         config_path = os.path.join(os.path.dirname(__file__), "config.txt")
         if not os.path.exists(config_path):
             if log:
-                Domoticz.Status("Somfy: config.txt niet gevonden op " + config_path)
+                Domoticz.Status("config.txt niet gevonden op " + config_path)
             return
 
         try:
@@ -726,12 +721,16 @@ class BasePlugin:
                         self.domoticz_host = val
                     elif key == "DOMOTICZ_PORT":
                         self.domoticz_port = val
+                    elif key == "SUN_REFRESH_TIME":  # <-- hier toevoegen
+                        self.sun_refresh_time = val  # verwacht formaat "HH:MM"
 
             # Deze logregel is cruciaal om te zien of het gelukt is
-            Domoticz.Log(f"Somfy: Config.txt loaded. Domoticz @ {self.domoticz_host}:{self.domoticz_port}")
-            
+            Domoticz.Log(
+                f"Config.txt loaded. Domoticz @ {self.domoticz_host}:{self.domoticz_port} | "
+                f"Sunset and Sunrise refresh time: {self.sun_refresh_time}"
+)            
         except Exception as e:
-            Domoticz.Error(f"Somfy: Fout in load_config_txt: {str(e)}")
+            Domoticz.Error(f"Fout in load_config_txt: {str(e)}")
 
     def log_changes(self, interval, sunrise_str, sunset_str, status_label):
         """Logs changes in interval, sunrise, and sunset, only if they differ from last known values."""

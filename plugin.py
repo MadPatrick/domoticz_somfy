@@ -95,14 +95,14 @@
         <param field="Port" label="Portnumber Tahoma box" width="100px" required="true" default="8443"/>
         <param field="Mode1" label="Reset token" width="100px">            
             <options>
-                <option label="false" value="false" default="true"/>
-                <option label="true" value="true" />
+                <option label="False" value="false" default="true"/>
+                <option label="True" value="true" />
             </options>
         </param>
         <param field="Mode6" label="Debug logging" width="100px">
             <options>
-                <option label="true" value="Debug"/>
-                <option label="false" value="Normal"  default="true" />
+                <option label="False" value="Debug"/>
+                <option label="True" value="Normal"  default="true" />
             </options>
         </param>
     </params>

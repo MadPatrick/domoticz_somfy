@@ -1,13 +1,16 @@
+###################################################################################
 # Tahoma/Connexoon IO blind plugin
 #
 #
-# 
 # All credits for the plugin are for Nonolk, who is the origin plugin creator
+#
+#
+###################################################################################
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.2.5" externallink="https://github.com/MadPatrick/somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.2.6" externallink="https://github.com/MadPatrick/somfy">
     <description>
         <br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
-        Version: 5.2.5
+        Version: 5.2.6
         <br/>This plugin connects to the Tahoma or Connexoon box either via the web API or via local access.
         <br/>Various devices are supported (RollerShutter, LightSensor, Screen, Awning, Window, VenetianBlind, etc.).
         <br/>For new devices, please raise a ticket at the Github link above.
@@ -165,6 +168,7 @@ class BasePlugin:
 
         self.connected = None  # None = onbekend, True = verbonden, False = fout
         self._temp_log_active = False
+        self._sun_refreshed_today = None  # type: Optional[datetime.date]  # Track which date we last refreshed
 
     def onStart(self):
         """
@@ -288,7 +292,7 @@ class BasePlugin:
         # --- DEVICES OPHALEN ---
         filtered_devices = self.tahoma.get_devices()
 
-        # OPT 1: firstFree() check verwijderd — firstFree() werkte niet correct
+        # OPT 1: firstFree() check verwijderd   firstFree() werkte niet correct
         # op basis van DeviceID-keys en de check was zinloos hier.
         self.create_devices(filtered_devices)
 
@@ -298,8 +302,8 @@ class BasePlugin:
         return True
 
     def onStop(self):
-        logging.info("stopping plugin")
-        Domoticz.Log("stopping plugin")
+        logging.info("Plugin stopped")
+        Domoticz.Log("Plugin stopped")
         self.heartbeat = False
 
     def onConnect(self, Connection, Status, Description):
@@ -320,81 +324,82 @@ class BasePlugin:
 
     def refresh_daily_data(self):
         """
-        Refresh sunrise/sunset daily from Domoticz JSON API at a fixed time.
-        Forces update at first plugin start.
+        Refresh sunrise/sunset daily from Domoticz JSON API.
+        - On first call after (re)start: always refresh once.
+        - After that: refresh once per day at sun_refresh_time.
+        Uses an in-memory date flag to prevent repeated refreshes within the same session.
         """
         now = datetime.datetime.now()
+        today = now.date()
 
-        refresh_hour, refresh_min = map(int, self.sun_refresh_time.split(":"))
-        refresh_today = now.replace(hour=refresh_hour, minute=refresh_min, second=0, microsecond=0)
+        # Determine if a refresh is needed
+        first_refresh = self._sun_refreshed_today is None
 
-        # Type-check voor last_sun_refresh_ts (kan bytes zijn na Domoticz herstart)
-        if not isinstance(self.last_sun_refresh_ts, datetime.datetime):
+        if not first_refresh:
             try:
-                if isinstance(self.last_sun_refresh_ts, bytes):
-                    decoded = self.last_sun_refresh_ts.decode("utf-8")
-                    self.last_sun_refresh_ts = datetime.datetime.fromisoformat(decoded)
-                else:
-                    self.last_sun_refresh_ts = datetime.datetime.min
+                refresh_hour, refresh_min = map(int, self.sun_refresh_time.split(":"))
+                refresh_time_passed = (now.hour, now.minute) >= (refresh_hour, refresh_min)
+                daily_refresh_needed = refresh_time_passed and self._sun_refreshed_today < today
             except Exception:
-                self.last_sun_refresh_ts = datetime.datetime.min
+                daily_refresh_needed = False
+        else:
+            daily_refresh_needed = False
 
-        first_refresh = self.last_sun_refresh_ts <= datetime.datetime.min
-
-        if first_refresh or (now >= refresh_today and self.last_sun_refresh_ts < refresh_today):
-            try:
-                api_url = f"http://{self.domoticz_host}:{self.domoticz_port}/json.htm?type=command&param=getSunRiseSet"
-                with urllib.request.urlopen(api_url, timeout=10) as response:
-                    data = json.loads(response.read().decode('utf-8'))
-                    sunrise_full = data.get("Sunrise", "06:00:00")
-                    sunset_full  = data.get("Sunset", "22:00:00")
-
-                    self.last_sunrise = sunrise_full[:5]
-                    self.last_sunset  = sunset_full[:5]
-
-                    self.last_sunrise_ts = now.replace(
-                        hour=int(self.last_sunrise.split(":")[0]),
-                        minute=int(self.last_sunrise.split(":")[1]),
-                        second=0, microsecond=0
-                    )
-                    self.last_sunset_ts = now.replace(
-                        hour=int(self.last_sunset.split(":")[0]),
-                        minute=int(self.last_sunset.split(":")[1]),
-                        second=0, microsecond=0
-                    )
-
-                    self.log_day_night_times()
-                Domoticz.Log(f"Sunrise/sunset refreshed @ {now.strftime('%H:%M')}: sunrise={self.last_sunrise} sunset={self.last_sunset}")
-
-            except Exception as e:
-                Domoticz.Error(f"Sunrise/sunset couldn't be loaded: {e}")
-                if not self.last_sunrise:
-                    self.last_sunrise = "06:00"
-                if not self.last_sunset:
-                    self.last_sunset = "22:00"
-
-            self.last_sun_refresh_ts = now
-
-    def log_day_night_times(self):
-        if not self.last_sunrise or not self.last_sunset:
-            Domoticz.Debug("Sunrise/sunset nog niet beschikbaar, kan dag/nacht tijden niet loggen")
+        if not first_refresh and not daily_refresh_needed:
             return
+
+        try:
+            api_url = f"http://{self.domoticz_host}:{self.domoticz_port}/json.htm?type=command&param=getSunRiseSet"
+            with urllib.request.urlopen(api_url, timeout=10) as response:
+                data = json.loads(response.read().decode('utf-8'))
+                sunrise_full = data.get("Sunrise", "06:00:00")
+                sunset_full  = data.get("Sunset", "22:00:00")
+
+                self.last_sunrise = sunrise_full[:5]
+                self.last_sunset  = sunset_full[:5]
+
+                self.last_sunrise_ts = now.replace(
+                    hour=int(self.last_sunrise.split(":")[0]),
+                    minute=int(self.last_sunrise.split(":")[1]),
+                    second=0, microsecond=0
+                )
+                self.last_sunset_ts = now.replace(
+                    hour=int(self.last_sunset.split(":")[0]),
+                    minute=int(self.last_sunset.split(":")[1]),
+                    second=0, microsecond=0
+                )
+
+            Domoticz.Log(
+                f"Sunrise/sunset refreshed @ {now.strftime('%H:%M')}: "
+                f"sunrise={self.last_sunrise} sunset={self.last_sunset} | "
+                + self._day_night_times_str()
+            )
+
+        except Exception as e:
+            Domoticz.Error(f"Sunrise/sunset couldn't be loaded: {e}")
+            if not self.last_sunrise:
+                self.last_sunrise = "06:00"
+            if not self.last_sunset:
+                self.last_sunset = "22:00"
+
+        # Mark today as refreshed regardless of success/failure
+        self._sun_refreshed_today = today
+
+    def _day_night_times_str(self):
+        """Returns a formatted string with day/night start times based on sunrise/sunset + delays."""
+        if not self.last_sunrise or not self.last_sunset:
+            return ""
 
         sr_hour, sr_min = map(int, self.last_sunrise.split(':'))
         ss_hour, ss_min = map(int, self.last_sunset.split(':'))
 
-        day_start_minutes = sr_hour * 60 + sr_min - self.sunriseDelay
-        day_start_hour = day_start_minutes // 60
-        day_start_min  = day_start_minutes % 60
+        day_start_min   = sr_hour * 60 + sr_min - self.sunriseDelay
+        night_start_min = ss_hour * 60 + ss_min + self.sunsetDelay
 
-        night_start_minutes = ss_hour * 60 + ss_min + self.sunsetDelay
-        night_start_hour = night_start_minutes // 60
-        night_start_min  = night_start_minutes % 60
+        day_str   = f"{day_start_min // 60:02d}:{day_start_min % 60:02d}"
+        night_str = f"{night_start_min // 60:02d}:{night_start_min % 60:02d}"
 
-        day_start_str   = f"{day_start_hour:02d}:{day_start_min:02d}"
-        night_start_str = f"{night_start_hour:02d}:{night_start_min:02d}"
-
-        Domoticz.Log(f"Day mode starts at {day_start_str} | Night mode starts at {night_start_str}")
+        return f"Day starts {day_str} | Night starts {night_str}"
 
     def onMessage(self, Connection, Data):
         Domoticz.Debug("onMessage called (not implemented). Data: " + str(Data))
@@ -501,11 +506,18 @@ class BasePlugin:
         # (host, port, sun_refresh_time) zonder herstart worden opgepikt
         today = datetime.datetime.now().day
         if today != self.last_config_day:
-            Domoticz.Log("Nieuwe dag gedetecteerd, config.txt herladen")
+            Domoticz.Log("New day detected, config.txt reloaded")
             self.load_config_txt(log=True)
             self.last_config_day = today
 
         self.refresh_daily_data()
+
+        # Seed last-known values after first refresh so log_changes
+        # does not report spurious "changed from None" on first heartbeat
+        if self._last_logged_sunrise is None:
+            self._last_logged_sunrise = self.last_sunrise
+        if self._last_logged_sunset is None:
+            self._last_logged_sunset = self.last_sunset
 
         now = datetime.datetime.now()
         now_minutes = now.hour * 60 + now.minute
@@ -530,6 +542,10 @@ class BasePlugin:
             Domoticz.Status(f"Mode switched to {status_label}. Polling interval is now {standard_interval}s")
             logging.info(f"Mode switched to {status_label}. Polling interval is now {standard_interval}s")
             self._last_mode = status_label
+
+        # Seed last_interval on first heartbeat so log_changes won't report a spurious change
+        if self.last_interval is None:
+            self.last_interval = standard_interval
 
         self.log_changes(standard_interval, self.last_sunrise, self.last_sunset, status_label)
 
@@ -699,7 +715,7 @@ class BasePlugin:
 
             logging.debug("create_devices: check if need to create device: "+device["label"])
 
-            # OPT 2: dubbele found-logica vervangen door één directe check met continue
+            # OPT 2: dubbele found-logica vervangen door   n directe check met continue
             if device["deviceURL"] in Devices:
                 logging.debug("create_devices: device bestaat al, overslaan: " + device["label"])
                 continue
@@ -781,13 +797,13 @@ class BasePlugin:
         interval_changed = self.last_interval != interval
 
         if interval_changed:
-            Domoticz.Log(f"Polling interval changed: new interval = {interval}s")
+            Domoticz.Log(f"Polling interval changed to {interval}s")
 
-        if sunrise_changed:
-            Domoticz.Log(f"Sunrise changed: {self._last_logged_sunrise} -> {sunrise_str}")
-
-        if sunset_changed:
-            Domoticz.Log(f"Sunset changed: {self._last_logged_sunset} -> {sunset_str}")
+        if sunrise_changed or sunset_changed:
+            Domoticz.Log(
+                f"Sun times changed: sunrise {self._last_logged_sunrise} -> {sunrise_str} | "
+                f"sunset {self._last_logged_sunset} -> {sunset_str}"
+            )
 
         self.last_interval        = interval
         self._last_logged_sunrise = sunrise_str

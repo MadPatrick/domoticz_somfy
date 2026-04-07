@@ -63,6 +63,12 @@
         <br/>Local IP: enter the IP address of the box, e.g. 192.168.1.100</td>
     </tr>
     <tr>
+        <td>Gateway PIN (Local IP)</td>
+        <td>Only used in Local IP mode. Enter the Gateway PIN (e.g. 1234-1234-1234) so the plugin can
+        generate and store a token via the Somfy web API.
+        <br/>Leave empty once a valid token is stored — it is only needed on first start or when resetting the token.</td>
+    </tr>
+    <tr>
         <td>Port</td>
         <td>Portnumber of the Tahoma box (8443)</td>
     </tr>

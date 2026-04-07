@@ -323,9 +323,10 @@ class BasePlugin:
         if self.local:
             try:
                 gateways = self.tahoma.get_gateways()
+                Domoticz.Log("Gateway raw data: " + str(gateways))
                 self._gateway_info = utils.parse_gateway_info(gateways)
                 Domoticz.Log(
-                    "Gateway: {type_label} | Status: {connectivity} | "
+                    "Gateway: {type_label} (id={gateway_id}) | Status: {connectivity} | "
                     "Protocol: {protocol_version} | Mode: {mode}".format(**self._gateway_info)
                 )
                 logging.debug("Gateway info: " + str(self._gateway_info))

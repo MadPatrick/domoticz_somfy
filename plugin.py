@@ -246,7 +246,7 @@ class BasePlugin:
             except ValueError:
                 Domoticz.Error(f"Invalid IP address in Address field for Local IP mode: '{address}'. Plugin cannot start.")
                 return False
-            self.tahoma = SomfyBox(address, port, ip=address)
+            self.tahoma = SomfyBox(None, port, ip=address)
             self.local       = True
             self.local_ip_mode = True
             Domoticz.Log(f"Local IP connection configured: {address}:{port}")
@@ -259,8 +259,8 @@ class BasePlugin:
             self.local       = False
             self.local_ip_mode = False
 
-        # pin is used later by setup_and_sync_devices for token management
-        pin = address
+        # pin is used by setup_and_sync_devices for token management (only relevant in Local PIN mode)
+        pin_or_address = address
 
         try:
             self.tahoma.tahoma_login(str(Parameters.get("Username")), str(Parameters.get("Password")))
@@ -268,9 +268,9 @@ class BasePlugin:
             Domoticz.Error("Failed to login: " + str(exp))
             return False
 
-        self.setup_and_sync_devices(pin)
+        self.setup_and_sync_devices(pin_or_address)
 
-    def setup_and_sync_devices(self, pin):
+    def setup_and_sync_devices(self, pin_or_address):
         if not self.tahoma.logged_in:
             Domoticz.Error("TaHoma not logged in")
             return False
@@ -296,8 +296,8 @@ class BasePlugin:
             else:
                 if confToken == '0' or Parameters["Mode1"] == "True":
                     logging.debug("no token found, generate a new one")
-                    self.tahoma.generate_token(pin)
-                    self.tahoma.activate_token(pin, self.tahoma.token)
+                    self.tahoma.generate_token(pin_or_address)
+                    self.tahoma.activate_token(pin_or_address, self.tahoma.token)
                     setConfigItem('token', self.tahoma.token)
                 else:
                     logging.debug("found token in configuration: " + str(confToken))
@@ -324,8 +324,8 @@ class BasePlugin:
                     return False
                 Domoticz.Log("Stored token rejected (401), regenerating token...")
                 try:
-                    self.tahoma.generate_token(pin)
-                    self.tahoma.activate_token(pin, self.tahoma.token)
+                    self.tahoma.generate_token(pin_or_address)
+                    self.tahoma.activate_token(pin_or_address, self.tahoma.token)
                     setConfigItem('token', self.tahoma.token)
                     self.tahoma.register_listener()
                     filtered_devices = self.tahoma.get_devices()

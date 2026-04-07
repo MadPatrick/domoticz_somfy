@@ -97,7 +97,7 @@ sudo apt-get install python3-requests
 
 Activating this mode will enable a local API on your TaHoma and Connexoon box. Be aware that Somfy will not be able to provide support for usage of this API.
 
-2. Your Somfy box needs to be traceable in your network.
+2. Your Somfy box needs to be reachable in your network.
 
 **Option A – Direct IP (no DNS needed):**  
 Select **Local IP** in the **Connection** field (`Mode4`) and fill in the IP address of your Somfy box in the **Gateway PIN or IP Address** field, for example `192.168.1.100`.  

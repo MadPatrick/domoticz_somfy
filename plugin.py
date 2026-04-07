@@ -818,14 +818,14 @@ class BasePlugin:
             return
         conn_type = "Local" if self.local else "Web"
         if connected:
-            last_poll = self._last_connected_time.strftime("%H:%M:%S") if self._last_connected_time else "unknown"
             nValue = 1
             gw = self._gateway_info
-            if gw.get("type_label"):
-                gw_str = f" | GW: {gw['type_label']} ({gw['connectivity']})"
-            else:
-                gw_str = ""
-            sValue = f"Connected \u2014 {conn_type} API | Last poll: {last_poll}{gw_str}"
+            type_label = gw.get("type_label", "")
+            protocol = gw.get("protocol_version", "")
+            status = gw.get("connectivity", "")
+            line1 = f"Connect - {conn_type} API | {type_label}" if type_label else f"Connect - {conn_type} API"
+            line2 = f"FW : Protocol: {protocol} | Status: {status}" if protocol or status else ""
+            sValue = f"{line1}\n{line2}" if line2 else line1
         else:
             error = self._last_error if self._last_error else "unknown"
             nValue = 4

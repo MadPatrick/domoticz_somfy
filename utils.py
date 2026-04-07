@@ -115,6 +115,15 @@ _GATEWAY_TYPES = {
     162: "Connexoon Window RTS",
 }
 
+# Fallback: map the first segment of gatewayId (e.g. "1237" in "1237-2024-7920")
+# to a human-readable label for gateways that don't expose a numeric `type` field.
+_GATEWAY_ID_PREFIXES = {
+    "0240": "Connexoon IO",
+    "1237": "TaHoma Switch",
+    "2015": "TaHoma",
+    "2110": "TaHoma v2",
+}
+
 
 def parse_gateway_info(gateways):
     """Extract a summary dict from the /setup/gateways API response.
@@ -125,11 +134,16 @@ def parse_gateway_info(gateways):
     if not gateways:
         return {}
     gw = gateways[0]
+    gateway_id = gw.get("gatewayId", "")
     gw_type_int = gw.get("type")
-    type_label = _GATEWAY_TYPES.get(gw_type_int, f"Unknown ({gw_type_int})" if gw_type_int is not None else "Unknown")
+    if gw_type_int is not None:
+        type_label = _GATEWAY_TYPES.get(gw_type_int, f"Unknown ({gw_type_int})")
+    else:
+        prefix = gateway_id.split("-")[0] if gateway_id else ""
+        type_label = _GATEWAY_ID_PREFIXES.get(prefix, "TaHoma")
     connectivity = gw.get("connectivity", {})
     return {
-        "gateway_id":       gw.get("gatewayId", ""),
+        "gateway_id":       gateway_id,
         "type_label":       type_label,
         "connectivity":     connectivity.get("status", ""),
         "protocol_version": connectivity.get("protocolVersion", ""),

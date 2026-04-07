@@ -303,6 +303,7 @@ class BasePlugin:
                     self.tahoma.generate_token(pin)
                     self.tahoma.activate_token(pin, self.tahoma.token)
                     setConfigItem('token', self.tahoma.token)
+                    setConfigItem('token_created', datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
                 else:
                     logging.debug("found token in configuration (LocalIP mode): " + str(confToken))
                     self.tahoma.token = confToken
@@ -312,6 +313,7 @@ class BasePlugin:
                     self.tahoma.generate_token(pin)
                     self.tahoma.activate_token(pin, self.tahoma.token)
                     setConfigItem('token', self.tahoma.token)
+                    setConfigItem('token_created', datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
                 else:
                     logging.debug("found token in configuration: " + str(confToken))
                     self.tahoma.token = confToken
@@ -341,6 +343,7 @@ class BasePlugin:
                         self.tahoma.generate_token(pin)
                         self.tahoma.activate_token(pin, self.tahoma.token)
                         setConfigItem('token', self.tahoma.token)
+                        setConfigItem('token_created', datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
                         self.tahoma.register_listener()
                         filtered_devices = self.tahoma.get_devices()
                     except Exception as retry_e:
@@ -353,6 +356,7 @@ class BasePlugin:
                         self.tahoma.generate_token(pin)
                         self.tahoma.activate_token(pin, self.tahoma.token)
                         setConfigItem('token', self.tahoma.token)
+                        setConfigItem('token_created', datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
                         self.tahoma.register_listener()
                         filtered_devices = self.tahoma.get_devices()
                     except Exception as retry_e:
@@ -881,7 +885,13 @@ class BasePlugin:
             status = gw.get("connectivity", "")
             line1 = f"Connect - {conn_type} API | {type_label}" if type_label else f"Connect - {conn_type} API"
             line2 = f"FW : {protocol} | Status: {status}" if protocol or status else ""
-            sValue = f"{line1}\n{line2}" if line2 else line1
+            if self.local:
+                token_created = getConfigItem('token_created', '')
+                line3 = f"Token aangemaakt: {token_created}" if token_created else "Token: aanwezig"
+            else:
+                line3 = ""
+            parts = [p for p in [line1, line2, line3] if p]
+            sValue = "\n".join(parts)
         else:
             error = self._last_error if self._last_error else "unknown"
             nValue = 4

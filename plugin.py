@@ -259,7 +259,7 @@ class BasePlugin:
 
             if self.local_ip_mode:
                 # In Local IP mode the PIN (Address field) is still available for token generation via web API.
-                if confToken == '0' or Parameters["Mode1"] == "True":
+                if confToken == '0' or Parameters["Mode1"].lower() == "true":
                     if not pin or pin == "1234-1234-1234":
                         Domoticz.Error(
                             "Local IP mode: no stored token and no valid Gateway PIN in Address field. "
@@ -278,7 +278,7 @@ class BasePlugin:
                     self.tahoma.token = confToken
                     Domoticz.Log("Token present (LocalIP mode), loaded from configuration")
             else:
-                if confToken == '0' or Parameters["Mode1"] == "True":
+                if confToken == '0' or Parameters["Mode1"].lower() == "true":
                     logging.debug("no token found, generate a new one")
                     self.tahoma.generate_token(pin)
                     self.tahoma.activate_token(pin, self.tahoma.token)

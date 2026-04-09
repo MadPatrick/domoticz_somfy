@@ -38,32 +38,24 @@
         <td>Enter your Somfy Password</td>
     </tr>
     <tr>
-        <td>Refresh interval</td>
-        <td>How often must the devices be polled?
-        <br/>Enter two numbers separated by a semicolon (;)
-        <br/>The first number is for day refresh polling (in seconds), the second is for night refresh polling (in seconds).</td>
-    </tr>
-    <tr>
-        <td>Temp polling interval</td>
-        <td>How often must the devices be polled?
-        <br/>Enter two numbers separated by a semicolon (;)</td>
-    </tr>
-    <tr>
         <td>Connection</td>
         <td>Choose how to interact with the Somfy/Tahoma/Connexoon box:
         <br/>Web: via Somfy web server (requires continuous internet access)
         <br/>Local PIN: connect directly to the box using the Gateway PIN (requires DNS or /etc/hosts entry for &lt;PIN&gt;.local)
         <br/>Local IP: connect directly to the box using an IP address (no DNS required)
-        <br/>Somfy is depreciating the Web access, so it is better to use the local API</td>
+        <br/>
+        <br/>Somfy is depreciating the Web access, so it is better to use the local API
+        <br/>Preferable use the Local IP mode</td>
     </tr>
     <tr>
         <td>Address</td>
         <td>Gateway PIN of the Tahoma box, e.g. 1234-1234-1234.
+        <br/>
         <br/>Used for all connection modes to generate and activate the local API token via the Somfy web API.</td>
     </tr>
     <tr>
         <td>Local IP Address</td>
-        <td>Only used in Local IP mode. Enter the IP address of the Tahoma box, e.g. 192.168.1.100.
+        <td>Only used in Local IP mode. Enter the IP address of the Tahoma box, e.g. 192.168.1.100
         <br/>Leave empty when using Web or Local PIN mode.</td>
     </tr>
     <tr>
@@ -84,8 +76,6 @@
     <params>
         <param field="Username" label="Username" width="200px" required="true" default=""/>
         <param field="Password" label="Password" width="200px" required="true" default="" password="true"/>
-        <param field="Mode2" label="Refresh interval" width="100px" default="30;900"/>
-        <param field="Mode5" label="Temp refresh interval" width="200px" default="15;120"/>
         <param field="Mode4" label="Connection" width="150px">
             <description><br/>Somfy is depreciating the Web access, so it is better to use the local API</description>
             <options>
@@ -169,7 +159,7 @@ class BasePlugin:
 
         self.temp_interval_end = time.time()
 
-        self.connected = None  # None = onbekend, True = verbonden, False = fout
+        self.connected = None  # None = unknown, True = connected, False = error
         self._last_connected_time = None
         self._last_error = ""
         self._temp_log_active = False
@@ -180,7 +170,7 @@ class BasePlugin:
         """
         Plugin initialization.
         Sets up logging, polling intervals, sunrise/sunset delays,
-        and TEMP_DELAY / TEMP_TIME from Mode5.
+        and TEMP_DELAY / TEMP_TIME from config.txt.
         """
         log_dir = ""
         log_fullname = os.path.join(log_dir, self.log_filename)
@@ -205,36 +195,14 @@ class BasePlugin:
 
         logging.info("Starting plugin version " + Parameters.get("Version", "Unknown"))
 
-        # --- Polling intervals (Mode2) ---
-        try:
-            day_str, night_str = Parameters.get("Mode2", "30;900").split(";")
-            self.dayInterval   = int(day_str.strip())
-            self.nightInterval = int(night_str.strip())
-            Domoticz.Log(f"Polling intervals Day / Night: {self.dayInterval}s and {self.nightInterval}s")
-        except Exception as e:
-            self.dayInterval   = 30
-            self.nightInterval = 900
-            Domoticz.Error(f"Failed to parse Mode2 for intervals, using defaults: {e}")
-
-        # --- TEMP_DELAY / TEMP_TIME from Mode5 ---
-        try:
-            delay_str, time_str = Parameters.get("Mode5", "10;60").split(";")
-            self.temp_delay = int(delay_str.strip())
-            self.temp_time  = int(time_str.strip())
-            Domoticz.Log(f"Temp delay settings : {self.temp_delay}s delay for {self.temp_time}s")
-        except Exception as e:
-            self.temp_delay = 10
-            self.temp_time  = 60
-            Domoticz.Error(f"Failed to parse Mode5 for TEMP settings, using defaults: {e}")
-
-        # --- Set initial runCounter for heartbeat ---
-        self.runCounter = self.dayInterval
-
         # --- Enable heartbeat ---
         Domoticz.Heartbeat(1)
 
-        # --- Load remaining settings from config.txt ---
+        # --- Load all settings from config.txt (includes polling intervals) ---
         self.load_config_txt(log=True)
+
+        # --- Set initial runCounter for heartbeat ---
+        self.runCounter = self.dayInterval
 
         self.last_config_day = datetime.datetime.now().day
         self.enabled = True
@@ -304,9 +272,11 @@ class BasePlugin:
                     self.tahoma.activate_token(pin, self.tahoma.token)
                     setConfigItem('token', self.tahoma.token)
                     setConfigItem('token_created', datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
+                    Domoticz.Log("Token created (LocalIP mode)")
                 else:
                     logging.debug("found token in configuration (LocalIP mode): " + str(confToken))
                     self.tahoma.token = confToken
+                    Domoticz.Log("Token present (LocalIP mode), loaded from configuration")
             else:
                 if confToken == '0' or Parameters["Mode1"] == "True":
                     logging.debug("no token found, generate a new one")
@@ -314,9 +284,11 @@ class BasePlugin:
                     self.tahoma.activate_token(pin, self.tahoma.token)
                     setConfigItem('token', self.tahoma.token)
                     setConfigItem('token_created', datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
+                    Domoticz.Log("Token created")
                 else:
                     logging.debug("found token in configuration: " + str(confToken))
                     self.tahoma.token = confToken
+                    Domoticz.Log("Token present, loaded from configuration")
 
         try:
             self.tahoma.register_listener()
@@ -344,6 +316,7 @@ class BasePlugin:
                         self.tahoma.activate_token(pin, self.tahoma.token)
                         setConfigItem('token', self.tahoma.token)
                         setConfigItem('token_created', datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
+                        Domoticz.Log("Token refreshed (LocalIP mode)")
                         self.tahoma.register_listener()
                         filtered_devices = self.tahoma.get_devices()
                     except Exception as retry_e:
@@ -357,6 +330,7 @@ class BasePlugin:
                         self.tahoma.activate_token(pin, self.tahoma.token)
                         setConfigItem('token', self.tahoma.token)
                         setConfigItem('token_created', datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
+                        Domoticz.Log("Token refreshed")
                         self.tahoma.register_listener()
                         filtered_devices = self.tahoma.get_devices()
                     except Exception as retry_e:
@@ -887,7 +861,7 @@ class BasePlugin:
             line2 = f"FW : {protocol} | Status: {status}" if protocol or status else ""
             if self.local:
                 token_created = getConfigItem('token_created', '')
-                line3 = f"Token aangemaakt: {token_created}" if token_created else "Token: aanwezig"
+                line3 = f"Token created: {token_created}" if token_created else "Token: present"
             else:
                 line3 = ""
             parts = [p for p in [line1, line2, line3] if p]
@@ -907,7 +881,7 @@ class BasePlugin:
         config_path = os.path.join(os.path.dirname(__file__), "config.txt")
         if not os.path.exists(config_path):
             if log:
-                Domoticz.Status("config.txt niet gevonden op " + config_path)
+                Domoticz.Status("config.txt not found at " + config_path)
             return
 
         try:
@@ -925,8 +899,28 @@ class BasePlugin:
                         self.domoticz_host = val
                     elif key == "DOMOTICZ_PORT":
                         self.domoticz_port = val
+                    elif key == "DAY_INTERVAL":
+                        try:
+                            self.dayInterval = int(val)
+                        except ValueError:
+                            Domoticz.Error(f"Invalid DAY_INTERVAL value in config.txt: {val}")
+                    elif key == "NIGHT_INTERVAL":
+                        try:
+                            self.nightInterval = int(val)
+                        except ValueError:
+                            Domoticz.Error(f"Invalid NIGHT_INTERVAL value in config.txt: {val}")
+                    elif key == "TEMP_DELAY":
+                        try:
+                            self.temp_delay = int(val)
+                        except ValueError:
+                            Domoticz.Error(f"Invalid TEMP_DELAY value in config.txt: {val}")
+                    elif key == "TEMP_TIME":
+                        try:
+                            self.temp_time = int(val)
+                        except ValueError:
+                            Domoticz.Error(f"Invalid TEMP_TIME value in config.txt: {val}")
                     elif key == "SUN_REFRESH_TIME":
-                        self.sun_refresh_time = val  # verwacht formaat "HH:MM"
+                        self.sun_refresh_time = val  # expected format "HH:MM"
                     elif key == "SUNRISE_DELAY":
                         try:
                             self.sunriseDelay = int(val)
@@ -938,13 +932,17 @@ class BasePlugin:
                         except ValueError:
                             Domoticz.Error(f"Invalid SUNSET_DELAY value in config.txt: {val}")
 
-            Domoticz.Log(
-                f"Config.txt loaded. Domoticz @ {self.domoticz_host}:{self.domoticz_port} | "
-                f"Sunset and Sunrise refresh time: {self.sun_refresh_time} | "
-                f"Sunrise delay: {self.sunriseDelay}m, Sunset delay: {self.sunsetDelay}m"
-            )
+            if log:
+                Domoticz.Log("Config.txt loaded.")
+                # Domoticz.Log(
+                #     f"Domoticz @ {self.domoticz_host}:{self.domoticz_port} | "
+                #     f"Polling intervals Day / Night: {self.dayInterval}s / {self.nightInterval}s | "
+                #     f"Temp: {self.temp_delay}s delay for {self.temp_time}s | "
+                #     f"Sunset and Sunrise refresh time: {self.sun_refresh_time} | "
+                #     f"Sunrise delay: {self.sunriseDelay}m, Sunset delay: {self.sunsetDelay}m"
+                # )
         except Exception as e:
-            Domoticz.Error(f"Fout in load_config_txt: {str(e)}")
+            Domoticz.Error(f"Error in load_config_txt: {str(e)}")
 
     def log_changes(self, interval, sunrise_str, sunset_str, status_label):
         """Logs changes in interval, sunrise, and sunset, only if they differ from last known values."""

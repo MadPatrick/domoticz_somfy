@@ -201,14 +201,14 @@ class SomfyBox(TahomaWebApi):
         if not self.listener.valid:
             logging.error("cannot fetch events if no listener registered")
             raise exceptions.NoListenerFailure()
-        for i in range(1,4):
-            #do several retries on reaching events end point before going to time out error
+        for i in range(1, 4):
+            # do several retries on reaching events end point before going to time out error
             try:
-                response = requests.post(self.base_url_local + "/events/"+self.listener.listenerId+"/fetch", headers=self.headers_with_token, verify=False)
-                logging.debug("get events response: status '" + str(response.status_code) + "' response body: '"+str(response)+"'")
+                response = requests.post(self.base_url_local + "/events/" + self.listener.listenerId + "/fetch", headers=self.headers_with_token, verify=False)
+                logging.debug("get events response: status '" + str(response.status_code) + "' response body: '" + str(response) + "'")
                 if response.status_code != 200:
                     logging.error("error during get events, status: " + str(response.status_code) + ", " + str(response.text))
-                    if response.status_code ==400 and "error" in response.json():
+                    if response.status_code == 400 and "error" in response.json():
                         if "No registered event listener" in response.json()["error"]:
                             self.listener.valid = False
                             logging.error("fetch events failed due to no valid listener registered")
@@ -219,17 +219,17 @@ class SomfyBox(TahomaWebApi):
                     strData = response.json()
                     self.listener.refresh_listener()
                     logging.debug("succeeded to get local API events: " + str(response.json()))
-                    if (not "DeviceStateChangedEvent" in response.text):
+                    if "DeviceStateChangedEvent" not in response.text:
                         logging.debug("get_events: no DeviceStateChangedEvent found in response: " + str(strData))
                         return
                     else:
                         return response.json()
 
                 else:
-                  logging.info("Return status " + str(response.status_code))
+                    logging.info("Return status " + str(response.status_code))
             except requests.exceptions.RequestException as exp:
                 logging.error("get_events RequestException: " + str(exp))
-            #wait increasing time before next try
+            # wait increasing time before next try
             time.sleep(i ** 3)
         else:
             raise exceptions.TooManyRetries

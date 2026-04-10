@@ -80,8 +80,8 @@
             <description><br/>Somfy is depreciating the Web access, so it is better to use the local API</description>
             <options>
                 <option label="Web" value="Web"/>
-                <option label="Local PIN" value="Local" default="true"/>
-                <option label="Local IP" value="LocalIP"/>
+                <option label="Local PIN" value="Local"/>
+                <option label="Local IP" value="LocalIP" default="true"/>
             </options>
         </param>
         <param field="Address" label="Gateway PIN" width="175px" required="true" default="1234-1234-1234"/>
@@ -211,7 +211,7 @@ class BasePlugin:
         pin     = Parameters.get("Address", "").strip()
         mode3   = Parameters.get("Mode3", "").strip()
         port    = int(Parameters.get("Port", 8443))
-        mode4   = Parameters.get("Mode4", "Local")
+        mode4   = Parameters.get("Mode4", "LocalIP")
 
         if mode4 == "LocalIP":
             # Mode3 holds the IP address in Local IP mode

@@ -6,7 +6,9 @@ stateSet = {
     "core:ClosureState",
     "core:OpenClosedState",
     "core:LuminanceState",
-    "core:DeploymentState"
+    "core:DeploymentState",
+    "core:OpenClosedPartialState",
+    "core:OpenClosedPedestrianState"
 }
 
 # Supported uiClasses for io:// and rts:// devices

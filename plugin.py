@@ -807,6 +807,9 @@ class BasePlugin:
                 used = 1
                 if device["definition"]["uiClass"] == "Awning":
                     swtype = 13
+                elif device["definition"]["uiClass"] in ("GarageDoor","Gate"):
+                    """ Garage Door and Gate are created as Inverted Door Lock """
+                    swtype = 20
                 elif device["definition"]["uiClass"] == "RollerShutter":
                     deviceType = 244
                     swtype = 21

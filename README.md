@@ -134,16 +134,16 @@ Add the hardware to your Domoticz system and fill in the required fields
 
 👉 **Somfy Tahoma or Connexoon plugin**
 
-| 🏷️ **Field** | 📋 **Input** |
+| **Field** | **Input** |
 |--------------|--------------|
-| 👤 Username | Somfy account login |
-| 🔑 Password | Somfy account password |
-| 🌐 Connection | **Web** – via Somfy web server; **Local PIN** – direct connection using Gateway PIN (DNS required); **Local IP** – direct connection using IP address (no DNS required) |
-| 📍 Gateway PIN | Gateway PIN of your Somfy box (e.g. `1234-1234-1234`). Used for all connection modes to generate/activate the local API token. |
-| 🌐 Local IP Address | Only for **Local IP** mode: IP address of your Somfy box (e.g. `192.168.1.100`). Leave empty for Web or Local PIN mode. |
-| 🔁 Reset token | `False` by default; set `True` if token errors occur |
-| 🔢 Portnumber | Default `8443` |
-| 🐞 Debug logging | `Off` by default; `On` for verbose logs |
+| Username | Somfy account login |
+| Password | Somfy account password |
+| Connection | **Web** – via Somfy web server; **Local PIN** – direct connection using Gateway PIN (DNS required); **Local IP** – direct connection using IP address (no DNS required) |
+| Gateway PIN | Gateway PIN of your Somfy box (e.g. `1234-1234-1234`). Used for all connection modes to generate/activate the local API token. |
+| Local IP Address | Only for **Local IP** mode: IP address of your Somfy box (e.g. `192.168.1.100`). Leave empty for Web or Local PIN mode. |
+| Reset token | `False` by default; set `True` if token errors occur |
+| Portnumber | Default `8443` |
+| Debug logging | `Off` by default; `On` for verbose logs |
 
 
 🔧 After saving the configuration, devices are automatically created in **Devices**.

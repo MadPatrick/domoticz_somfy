@@ -21,6 +21,7 @@ Supported devices:
 - Sliding Gate
 - Windows
 - Venetian blinds (positions + slats control)
+- Exterior Venetian blinds
 - Luminance sensor
 
 ## ⚠️ Important Notes
@@ -31,19 +32,20 @@ When upgrading to version 3.x, it is required to first remove all devices attach
 As of version 4.x the plugin supports local access to the Somfy box for both Tahoma and Connexoon. Addtional installation steps mentioned below.
 
 ### Version 5.x
-The latest plugin version **5.1.1** introduces:
+The latest plugin version **5.3.0** introduces:
 
 - **Extended device support**  
   - Full venetian blinds: separate units for up/down and orientation.  
+  - Exterior venetian blinds supported.  
   - Awning devices handled correctly (no inverted percentages).  
   - Luminance sensors supported.
 
 - **Day/Night polling**  
-  - Separate intervals for day and night (`Mode2`).  
-  - Temporary fast polling (10s) after commands for faster updates.  
+  - Separate intervals for day and night, configurable via `config.txt` (`DAY_INTERVAL` / `NIGHT_INTERVAL`).  
+  - Temporary fast polling after commands for faster status updates, configurable via `config.txt` (`TEMP_DELAY` / `TEMP_TIME`).  
 
 - **Sunrise/Sunset awareness**  
-  - Sunrise/sunset delays configurable via `Mode3`.  
+  - Sunrise/sunset delays configurable via `config.txt` (`SUNRISE_DELAY` / `SUNSET_DELAY`).  
   - Polling interval automatically adjusts based on daylight hours.
 
 - **Local API & token management**  
@@ -54,14 +56,14 @@ The latest plugin version **5.1.1** introduces:
   - Domoticz host/port, refresh intervals, sunrise/sunset delays, TEMP_DELAY/TIME.  
   - Can reload without restarting Domoticz.
 
-- **Improved logging & error handling**  
-  - Separate log file (`Mode5`) + debug logging (`Mode6`).  
-  - Only logs meaningful changes.  
-  - Better handling of API and command errors.
+- **Connection Status device**  
+  - Automatically created in Domoticz to show connection state, gateway type, firmware version, and token info.  
+  - Displays errors when the box is unreachable.
 
-- **Versioning & upgrades**  
-  - MAJOR/MINOR/PATCH version check (`checkVersion`).  
-  - Automatic update to extended plugin framework (`updateToEx`).  
+- **Improved logging & error handling**  
+  - Debug logging toggled via `Mode6` in the hardware settings.  
+  - Only logs meaningful changes.  
+  - Better handling of API and command errors. 
 
 ----------------------------------------------------------------------------------------------------------------------
 ⚠ **Somfy currently discourages the use of the Web API**  
@@ -136,17 +138,17 @@ Add the hardware to your Domoticz system and fill in the required fields
 |--------------|--------------|
 | 👤 Username | Somfy account login |
 | 🔑 Password | Somfy account password |
-| 🔄 Refresh Interval (`Mode2`) | `day;night` polling interval (in seconds) |
-| ⌛ Temp polling interval (`Mode5`) | refresh time and duration |
 | 🌐 Connection (`Mode4`) | **Web** – via Somfy web server; **Local PIN** – direct connection using Gateway PIN (DNS required); **Local IP** – direct connection using IP address (no DNS required) |
 | 📍 Gateway PIN (`Address`) | Gateway PIN of your Somfy box (e.g. `1234-1234-1234`). Used for all connection modes to generate/activate the local API token. |
 | 🌐 Local IP Address (`Mode3`) | Only for **Local IP** mode: IP address of your Somfy box (e.g. `192.168.1.100`). Leave empty for Web or Local PIN mode. |
 | 🔁 Reset token (`Mode1`) | `False` by default; set `True` if token errors occur |
 | 🔢 Portnumber | Default `8443` |
-| 🐞 Debug logging (`Mode6`) | `False` by default; `True` for verbose logs |
+| 🐞 Debug logging (`Mode6`) | `Off` by default; `On` for verbose logs |
 
 
 🔧 After saving the configuration, devices are automatically created in **Devices**.
+
+> 💡 A **Somfy Connection Status** device is automatically created. It shows the connection type, gateway model, firmware version, and token info. When the box is unreachable it displays the error reason.
 
 ## 🧾 config.txt (Advanced configuration)
 
@@ -168,17 +170,29 @@ Invalid or missing values will fall back to default settings
 📌 Values from config.txt override UI settings when defined.
 
 ```
+# ---- IP AND PORT OF DOMOTICZ ----
 DOMOTICZ_HOST=127.0.0.1
 DOMOTICZ_PORT=8080
+# ---- POLLING INTERVALS (in seconds) ----
+DAY_INTERVAL=30
+NIGHT_INTERVAL=900
+# ---- TEMP POLLING SETTINGS (in seconds) ----
+TEMP_DELAY=10
+TEMP_TIME=60
+# ---- REFRESH PARAMETERS FOR SUNSET/REFRESH TIMES ----
 SUN_REFRESH_TIME=02:15
+# ---- SUNRISE/SUNSET DELAYS (in minutes) ----
 # SUNRISE_DELAY=30
 # SUNSET_DELAY=60
-
 ```
 | Key | Description | Default |
 |-----|-------------|---------|
 | `DOMOTICZ_HOST` | IP address of your Domoticz server | `127.0.0.1` |
 | `DOMOTICZ_PORT` | Port of your Domoticz server | `8080` |
+| `DAY_INTERVAL` | Polling interval during the day (in seconds) | `30` |
+| `NIGHT_INTERVAL` | Polling interval during the night (in seconds) | `900` |
+| `TEMP_DELAY` | Fast-polling interval (in seconds) applied directly after a command | `10` |
+| `TEMP_TIME` | Duration (in seconds) the fast-polling stays active after a command | `60` |
 | `SUN_REFRESH_TIME` | Time of day to refresh sunrise/sunset data (HH:MM) | `02:00` |
 | `SUNRISE_DELAY` | Minutes before sunrise when day mode starts | `30` |
 | `SUNSET_DELAY` | Minutes after sunset when night mode starts | `60` |

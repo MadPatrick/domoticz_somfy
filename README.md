@@ -61,7 +61,7 @@ The latest plugin version **5.3.0** introduces:
   - Displays errors when the box is unreachable.
 
 - **Improved logging & error handling**  
-  - Debug logging toggled via `Mode6` in the hardware settings.  
+  - Debug logging toggled via the **Debug logging** field in the hardware settings.  
   - Only logs meaningful changes.  
   - Better handling of API and command errors. 
 
@@ -103,11 +103,11 @@ Activating this mode will enable a local API on your TaHoma and Connexoon box. B
 2. Your Somfy box needs to be reachable in your network.
 
 **Option A – Direct IP (no DNS needed):**  
-Select **Local IP** in the **Connection** field (`Mode4`), fill in the Gateway PIN in the **Gateway PIN** field (`Address`), and fill in the IP address of your Somfy box in the **Local IP Address** field (`Mode3`), for example `192.168.1.100`.  
+Select **Local IP** in the **Connection** field, fill in the Gateway PIN in the **Gateway PIN** field, and fill in the IP address of your Somfy box in the **Local IP Address** field, for example `192.168.1.100`.  
 The plugin will automatically generate and store a token on first start using the PIN and the Somfy web API.
 
 **Option B – PIN with DNS / hosts entry:**  
-Select **Local PIN** in the **Connection** field (`Mode4`). Enter the Gateway PIN in the **Gateway PIN** field (`Address`).  
+Select **Local PIN** in the **Connection** field. Enter the Gateway PIN in the **Gateway PIN** field.  
 You also need to link your Somfy Box PIN to the Somfy Box IP address in your network:
 ```
 192.168.1.1 1234-1234-1234.local
@@ -120,7 +120,7 @@ You also need to link your Somfy Box PIN to the Somfy Box IP address in your net
 1. Go in your Domoticz directory using a command line and open the plugins directory:
  ```cd domoticz/plugins```
 2. clone the plugin:
- ```git clone https://github.com/MadPatrick/somfy```
+ ```git clone https://github.com/MadPatrick/domoticz_somfy```
 2. Restart Domoticz:
  ```sudo systemctl restart domoticz```
 
@@ -138,12 +138,12 @@ Add the hardware to your Domoticz system and fill in the required fields
 |--------------|--------------|
 | 👤 Username | Somfy account login |
 | 🔑 Password | Somfy account password |
-| 🌐 Connection (`Mode4`) | **Web** – via Somfy web server; **Local PIN** – direct connection using Gateway PIN (DNS required); **Local IP** – direct connection using IP address (no DNS required) |
-| 📍 Gateway PIN (`Address`) | Gateway PIN of your Somfy box (e.g. `1234-1234-1234`). Used for all connection modes to generate/activate the local API token. |
-| 🌐 Local IP Address (`Mode3`) | Only for **Local IP** mode: IP address of your Somfy box (e.g. `192.168.1.100`). Leave empty for Web or Local PIN mode. |
-| 🔁 Reset token (`Mode1`) | `False` by default; set `True` if token errors occur |
+| 🌐 Connection | **Web** – via Somfy web server; **Local PIN** – direct connection using Gateway PIN (DNS required); **Local IP** – direct connection using IP address (no DNS required) |
+| 📍 Gateway PIN | Gateway PIN of your Somfy box (e.g. `1234-1234-1234`). Used for all connection modes to generate/activate the local API token. |
+| 🌐 Local IP Address | Only for **Local IP** mode: IP address of your Somfy box (e.g. `192.168.1.100`). Leave empty for Web or Local PIN mode. |
+| 🔁 Reset token | `False` by default; set `True` if token errors occur |
 | 🔢 Portnumber | Default `8443` |
-| 🐞 Debug logging (`Mode6`) | `Off` by default; `On` for verbose logs |
+| 🐞 Debug logging | `Off` by default; `On` for verbose logs |
 
 
 🔧 After saving the configuration, devices are automatically created in **Devices**.
@@ -157,7 +157,7 @@ This allows you to change settings **without restarting Domoticz**.
 
 📁 **Location:**
 ```
-domoticz/plugins/somfy/config.txt
+domoticz/plugins/domoticz_somfy/config.txt
 ```
 Remove the # for the setting you want to use in config.txt
 
@@ -211,7 +211,7 @@ If the slider positions do not match your preferences (Open = 0%, Close = 100%),
 ## 🔄 Update the plugin:
 When there an update of the plugin you can easlily do an update by:
 ```
-cd domoticz/plugins/somfy
+cd domoticz/plugins/domoticz_somfy
 git pull
 ```
 And then either restart Domoticz or update the plugin on the Hardware page.

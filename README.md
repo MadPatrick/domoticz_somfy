@@ -18,6 +18,7 @@ Supported devices:
 - Awning
 - Pergolas
 - Garage door
+- Sliding Gate
 - Windows
 - Venetian blinds (positions + slats control)
 - Luminance sensor

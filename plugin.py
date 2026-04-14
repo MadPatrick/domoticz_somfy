@@ -727,6 +727,13 @@ class BasePlugin:
                         lumlevel = state["value"]
                         lumstatus_l = True
 
+                    elif state["name"] in ("core:OpenClosedPedestrianState", "core:OpenClosedPartialState"):
+                        if state["value"] == "closed":
+                            level = 0
+                        elif state["value"] == "open":
+                            level = 100
+                        status_num = 1
+
                     Domoticz.Debug("checking for update on state[name]: '" + state["name"] + "' with status_num = '" + str(status_num) + "' for device: '" + dev + "'")
 
                     if status_num > 0 and level is not None:

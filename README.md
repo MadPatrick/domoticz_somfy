@@ -129,9 +129,6 @@ In the Domoticz UI, navigate to the Hardware page.
 In the hardware dropdown list there will be an entry called "Somfy Tahoma or Connexoon plugin".
 Add the hardware to your Domoticz system and fill in the required fields
 
-<img width="654" height="420" alt="image" src="https://github.com/user-attachments/assets/c04dec01-eefa-46b1-88ab-561f915b8e13" />
-
-
 👉 **Somfy Tahoma or Connexoon plugin**
 
 | **Field** | **Input** |
@@ -167,10 +164,10 @@ The plugin automatically reloads config.txt during runtime
 No Domoticz restart required.
 Invalid or missing values will fall back to default settings
 
-📌 Values from config.txt override UI settings when defined.
+📌 Values from config.txt will override UI settings when defined.
 
 ```
-# ---- IP AND PORT OF DOMOTICZ ----
+# ---- IP AND PORT OF DOMOTICZ. DON'T FORGET TO ENABLE ACCESS FOR LOCAL NETWORK ----
 DOMOTICZ_HOST=127.0.0.1
 DOMOTICZ_PORT=8080
 # ---- POLLING INTERVALS (in seconds) ----
@@ -182,8 +179,8 @@ TEMP_TIME=60
 # ---- REFRESH PARAMETERS FOR SUNSET/REFRESH TIMES ----
 SUN_REFRESH_TIME=02:15
 # ---- SUNRISE/SUNSET DELAYS (in minutes) ----
-# SUNRISE_DELAY=30
-# SUNSET_DELAY=60
+SUNRISE_DELAY=30
+SUNSET_DELAY=60
 ```
 | Key | Description | Default |
 |-----|-------------|---------|

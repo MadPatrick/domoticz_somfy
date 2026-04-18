@@ -26,8 +26,8 @@
         <br/>
 <table border="1" cellpadding="4" cellspacing="0">
     <tr>
-        <th>Parameter</th>
-        <th>Description</th>
+        <th style="width:120px">Parameter</th>
+        <th style="width:350px">Description</th>
     </tr>
     <tr>
         <td>Username</td>

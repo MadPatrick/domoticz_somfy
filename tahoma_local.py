@@ -35,7 +35,12 @@ class TahomaWebApi:
 
     def tahoma_login(self, username, password):
         data = {"userId": username, "userPassword": password}
-        response = requests.post(self.base_url_web + self.login_url, headers=self.headers_url, data=data, timeout=self.timeout)
+        try:
+            response = requests.post(self.base_url_web + self.login_url, headers=self.headers_url, data=data, timeout=self.timeout)
+        except requests.exceptions.RequestException as exp:
+            logging.error("Login request failed: " + str(exp))
+            raise exceptions.LoginFailure("Network error during login: " + str(exp))
+
         Data = response.json()
         logging.debug("Login respone: status_code: '"+str(response.status_code)+"' reponse body: '"+str(response.json())+"'")
 
@@ -60,6 +65,13 @@ class TahomaWebApi:
             else:
                 logging.error("login failed, unhandled reason: "+strData)
                 raise exceptions.LoginFailure("login failed, unhandled reason: "+strData)
+
+        else:
+            self.__logged_in = False
+            self.cookie = None
+            logging.error("login failed with unexpected status code: " + str(response.status_code))
+            raise exceptions.LoginFailure("Login failed with unexpected status code: " + str(response.status_code))
+
         return self.__logged_in
 
     def generate_token(self, pin):

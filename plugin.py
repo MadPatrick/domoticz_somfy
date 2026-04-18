@@ -166,6 +166,10 @@ class BasePlugin:
         self._sun_refreshed_today = None  # type: Optional[datetime.date]  # Track which date we last refreshed
         self._gateway_info = {}
 
+        # Login failure tracking / auto-reconnect
+        self._login_fail_count = 0
+        self._max_login_failures = 3  # number of consecutive failures before a reconnect is attempted
+
     def onStart(self):
         """
         Plugin initialization.
@@ -372,6 +376,23 @@ class BasePlugin:
 
         return True
 
+    def _do_reconnect(self):
+        """Attempt to re-login and re-register the listener after repeated login failures."""
+        Domoticz.Log(f"Reconnect poging na {self._login_fail_count} aaneengesloten login mislukkingen")
+        logging.warning(f"Attempting reconnect after {self._login_fail_count} consecutive login failures")
+        try:
+            self.tahoma.tahoma_login(str(Parameters["Username"]), str(Parameters["Password"]))
+            if self.tahoma.logged_in:
+                self.tahoma.register_listener()
+                self._login_fail_count = 0
+                Domoticz.Log("Reconnect geslaagd")
+                logging.info("Reconnect succeeded")
+                return True
+        except Exception as e:
+            Domoticz.Error(f"Reconnect mislukt: {e}")
+            logging.error(f"Reconnect failed: {e}")
+        return False
+
     def onStop(self):
         logging.info("Plugin stopped")
         Domoticz.Log("Plugin stopped")
@@ -531,12 +552,20 @@ class BasePlugin:
             try:
                 self.tahoma.tahoma_login(str(Parameters["Username"]), str(Parameters["Password"]))
             except Exception as e:
+                self._login_fail_count += 1
                 Domoticz.Error(f"Login mislukt, commando wordt afgebroken: {e}")
+                if self._login_fail_count >= self._max_login_failures:
+                    self._do_reconnect()
                 return False
 
             if not self.tahoma.logged_in:
+                self._login_fail_count += 1
                 Domoticz.Error("Login mislukt (geen exception), commando wordt afgebroken")
+                if self._login_fail_count >= self._max_login_failures:
+                    self._do_reconnect()
                 return False
+
+            self._login_fail_count = 0
 
             try:
                 self.tahoma.register_listener()
@@ -643,6 +672,7 @@ class BasePlugin:
                 self.connected = True
                 self._last_error = ""
                 self._last_connected_time = datetime.datetime.now()
+                self._login_fail_count = 0
                 self.update_connection_device(True)
 
             except Exception as e:
@@ -656,10 +686,13 @@ class BasePlugin:
                 else:
                     short = "Connection failed"
 
+                self._login_fail_count += 1
                 if self.connected is True or self.connected is None:
                     Domoticz.Error(f"{short} (box not reachable)")
                     self._last_error = short
                     self.update_connection_device(False)
+                if self._login_fail_count >= self._max_login_failures:
+                    self._do_reconnect()
                 self.connected = False
                 filtered_devices = None
 

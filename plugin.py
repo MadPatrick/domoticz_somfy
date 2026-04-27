@@ -7,10 +7,10 @@
 #
 ###################################################################################
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.3.0" externallink="https://github.com/MadPatrick/somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.3.1" externallink="https://github.com/MadPatrick/somfy">
     <description>
         <br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
-        Version: 5.3.0
+        Version: 5.3.1
         <br/>This plugin connects to the Tahoma or Connexoon box either via the web API or via local access.
         <br/>Various devices are supported (RollerShutter, LightSensor, Screen, Awning, Window, VenetianBlind, etc.).
         <br/>For new devices, please raise a ticket at the Github link above.
@@ -19,7 +19,7 @@
         <ol>
             <li>General: enter here your credentials and select the connection method</li>
             <li>Local: when connection method local is selected, fill this section as well</li>
-            <li>Debug: allows to set log level and specify log file location</li>
+            <li>Debug: allows to set log level</li>
         </ol>
         <br/><font color="yellow">Please put in the additional parameters in the config.txt file in the plugin folder</font>
         <br/>
@@ -128,7 +128,6 @@ class BasePlugin:
         self.command_data = None
         self.command = False
         self.actions_serialized = []
-        self.log_filename = "somfy.log"
         self.local = False
         self.local_ip_mode = False  # True when Mode4 == "LocalIP"
 
@@ -176,24 +175,19 @@ class BasePlugin:
         Sets up logging, polling intervals, sunrise/sunset delays,
         and TEMP_DELAY / TEMP_TIME from config.txt.
         """
-        log_dir = ""
-        log_fullname = os.path.join(log_dir, self.log_filename)
         Domoticz.Log(f"Starting Plugin version {Parameters['Version']}")
-        Domoticz.Log(f"Logging to file {log_fullname}")
 
         # --- Logging setup ---
         if Parameters.get("Mode6") == "Debug":
             Domoticz.Debugging(2)
             logging.basicConfig(
                 format='%(asctime)s - %(levelname)-8s - %(filename)-18s - %(message)s',
-                filename=log_fullname,
                 level=logging.DEBUG
             )
             DumpConfigToLog()
         else:
             logging.basicConfig(
                 format='%(asctime)s - %(levelname)-8s - %(filename)-18s - %(message)s',
-                filename=log_fullname,
                 level=logging.INFO
             )
 

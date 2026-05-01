@@ -23,6 +23,7 @@ Supported devices:
 - Venetian blinds (positions + slats control)
 - Exterior Venetian blinds
 - Luminance sensor
+- RTS devices (Open/Close only, no state feedback)
 
 ## ⚠️ Important Notes
 ### Version 3.x
@@ -32,7 +33,7 @@ When upgrading to version 3.x, it is required to first remove all devices attach
 As of version 4.x the plugin supports local access to the Somfy box for both Tahoma and Connexoon. Addtional installation steps mentioned below.
 
 ### Version 5.x
-The latest plugin version **5.3.0** introduces:
+The latest plugin version **5.3.1** introduces:
 
 - **Extended device support**  
   - Full venetian blinds: separate units for up/down and orientation.  
@@ -77,15 +78,13 @@ Before installation, register your Somfy products and add them to your Tahoma or
 - [Create Somfy account](https://www.somfy.nl/nieuw-account-aanmaken)  
 - [Tahoma login](https://www.tahomalink.com/enduser-mobile-web/steer-html5-client/tahoma/)
 
-Activating this mode will enable a local API on your TaHoma and Connexoon box. Be aware that Somfy will not be able to provide support for usage of this API.
-
 ## 💻 Installation
 
 ### Prerequisites
 1. Python 3.7+ and Domoticz 2022.1+ (required for Extended Plugin Framework)  
 2. Follow the Domoticz guide on [Using Python Plugins](https://www.domoticz.com/wiki/Using_Python_plugins)  
 3. Install required libraries:
-4. 
+
 ```
 sudo apt-get update
 sudo apt-get install python3 libpython3-dev libpython3.7-dev
@@ -121,7 +120,7 @@ You also need to link your Somfy Box PIN to the Somfy Box IP address in your net
  ```cd domoticz/plugins```
 2. clone the plugin:
  ```git clone https://github.com/MadPatrick/domoticz_somfy```
-2. Restart Domoticz:
+3. Restart Domoticz:
  ```sudo systemctl restart domoticz```
 
 ### ⚙️ Configure the Plugin
@@ -190,7 +189,7 @@ SUNSET_DELAY=60
 | `NIGHT_INTERVAL` | Polling interval during the night (in seconds) | `900` |
 | `TEMP_DELAY` | Fast-polling interval (in seconds) applied directly after a command | `10` |
 | `TEMP_TIME` | Duration (in seconds) the fast-polling stays active after a command | `60` |
-| `SUN_REFRESH_TIME` | Time of day to refresh sunrise/sunset data (HH:MM) | `02:00` |
+| `SUN_REFRESH_TIME` | Time of day to refresh sunrise/sunset data (HH:MM) | `02:15` |
 | `SUNRISE_DELAY` | Minutes before sunrise when day mode starts | `30` |
 | `SUNSET_DELAY` | Minutes after sunset when night mode starts | `60` |
 

@@ -12,3 +12,10 @@ SUN_REFRESH_TIME=02:15
 # ---- SUNRISE/SUNSET DELAYS (in minutes) ----
 SUNRISE_DELAY=30
 SUNSET_DELAY=60
+# ---- SLOW ROLLER SHUTTER SETTINGS ----
+# Enable slow open/close for roller shutters (True/False)
+SLOW_MOVEMENT_ENABLED=False
+# Step size (0-100) - smaller = slower. Default is 5% increments
+SLOW_MOVEMENT_STEP=5
+# Delay between steps in seconds
+SLOW_MOVEMENT_DELAY=0.5

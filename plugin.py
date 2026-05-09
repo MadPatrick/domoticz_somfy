@@ -120,6 +120,41 @@ import ipaddress
 
 _CONNECTION_DEVICE_ID = "connection_indicator"
 
+class GradualMovement:
+    """Manages gradual opening/closing of roller shutters."""
+    def __init__(self, device_id, unit, target_level, step_size, step_delay):
+        self.device_id = device_id
+        self.unit = unit
+        self.target_level = target_level
+        self.step_size = step_size
+        self.step_delay = step_delay
+        self.current_level = None
+        self.last_step_time = time.time()
+        self.is_active = True
+        
+    def is_ready_for_next_step(self):
+        """Check if enough time has passed for the next step."""
+        return time.time() - self.last_step_time >= self.step_delay
+    
+    def get_next_level(self, current_level):
+        """Calculate the next level based on current level and direction."""
+        self.current_level = current_level
+        
+        if current_level < self.target_level:
+            # Opening (level increasing)
+            next_level = min(current_level + self.step_size, self.target_level)
+        else:
+            # Closing (level decreasing)
+            next_level = max(current_level - self.step_size, self.target_level)
+        
+        self.last_step_time = time.time()
+        
+        # Check if we've reached the target
+        if next_level == self.target_level:
+            self.is_active = False
+        
+        return next_level
+
 class BasePlugin:
     def __init__(self):
         self.enabled = False
@@ -168,6 +203,12 @@ class BasePlugin:
         # Login failure tracking / auto-reconnect
         self._login_fail_count = 0
         self._max_login_failures = 3  # number of consecutive failures before a reconnect is attempted
+
+        # Slow movement settings
+        self.slow_movement_enabled = False
+        self.slow_movement_step = 5
+        self.slow_movement_delay = 0.5
+        self.active_movements = {}  # dict to track active movements per device
 
     def onStart(self):
         """
@@ -492,6 +533,30 @@ class BasePlugin:
 
     def onCommand(self, DeviceId, Unit, Command, Level, Hue):
         Domoticz.Debug(f"onCommand: DeviceId: {DeviceId}, Unit: {Unit}, Command: {Command}, Level: {Level}, Hue: {Hue}")
+        
+        # Handle slow movement for roller shutters
+        if self.slow_movement_enabled and Unit == 1:
+            if Command in ("Off", "Close"):
+                target_level = 0
+                self._start_gradual_movement(DeviceId, Unit, target_level)
+                return True
+            elif Command in ("On", "Open"):
+                target_level = 100
+                self._start_gradual_movement(DeviceId, Unit, target_level)
+                return True
+            elif "Set Level" in Command:
+                target_level = max(100 - int(Level), 0)
+                self._start_gradual_movement(DeviceId, Unit, target_level)
+                return True
+            elif Command == "Stop":
+                # Stop the gradual movement
+                if DeviceId in self.active_movements:
+                    del self.active_movements[DeviceId]
+                commands_data = self._build_command("stop", DeviceId, Unit)
+                self._send_command(commands_data)
+                return True
+        
+        # Original command handling for non-slow-movement cases
         self.actions_serialized = []
         commands_serialized = []
         action = {}
@@ -584,8 +649,111 @@ class BasePlugin:
 
         return True
 
+    def _start_gradual_movement(self, device_id, unit, target_level):
+        """Start a gradual movement for a device."""
+        try:
+            current_svalue = Devices[device_id].Units[unit].sValue
+            current_level = int(current_svalue) if current_svalue else 0
+        except (ValueError, KeyError):
+            current_level = 0
+        
+        if current_level == target_level:
+            logging.debug(f"Device {device_id} already at target level {target_level}")
+            return
+        
+        # Create a new gradual movement
+        movement = GradualMovement(device_id, unit, target_level, self.slow_movement_step, self.slow_movement_delay)
+        self.active_movements[device_id] = movement
+        
+        # Send first step immediately
+        next_level = movement.get_next_level(current_level)
+        self._send_closure_command(device_id, unit, next_level)
+        
+        logging.info(f"Started gradual movement for {device_id}: {current_level}% -> {target_level}% (step size: {self.slow_movement_step}%)")
+        Domoticz.Status(f"Gradual movement started for {Devices[device_id].Units[unit].Name}: {current_level}% -> {target_level}%")
+
+    def _send_closure_command(self, device_id, unit, level):
+        """Send a setClosure command for the given level."""
+        commands = {
+            "name": "setClosure",
+            "parameters": [level]
+        }
+        action = {
+            "deviceURL": device_id,
+            "commands": [commands]
+        }
+        data = {
+            "label": f"Domoticz - Gradual movement - {Devices[device_id].Units[unit].Name}",
+            "actions": [action]
+        }
+        
+        if self.local:
+            command_data = data
+        else:
+            command_data = json.dumps(data, indent=None, sort_keys=True)
+        
+        try:
+            self.tahoma.send_command(command_data)
+            logging.debug(f"Sent gradual movement step to {device_id}: level {level}%")
+        except Exception as e:
+            logging.error(f"Failed to send gradual movement command: {e}")
+
+    def _build_command(self, command_name, device_id, unit):
+        """Build a command structure."""
+        commands = {"name": command_name}
+        action = {
+            "deviceURL": device_id,
+            "commands": [commands]
+        }
+        data = {
+            "label": f"Domoticz - {Devices[device_id].Units[unit].Name} - {command_name}",
+            "actions": [action]
+        }
+        
+        if self.local:
+            return data
+        else:
+            return json.dumps(data, indent=None, sort_keys=True)
+
+    def _send_command(self, command_data):
+        """Send a command to the Tahoma box."""
+        try:
+            self.tahoma.send_command(command_data)
+        except Exception as e:
+            logging.error(f"Failed to send command: {e}")
+
     def onDisconnect(self, Connection):
         return
+
+    def _process_gradual_movements(self):
+        """Process active gradual movements and send next steps."""
+        if not self.slow_movement_enabled or not self.active_movements:
+            return
+        
+        devices_to_remove = []
+        
+        for device_id, movement in self.active_movements.items():
+            if not movement.is_active:
+                devices_to_remove.append(device_id)
+                continue
+            
+            if movement.is_ready_for_next_step():
+                try:
+                    current_svalue = Devices[device_id].Units[movement.unit].sValue
+                    current_level = int(current_svalue) if current_svalue else 0
+                except (ValueError, KeyError):
+                    current_level = movement.current_level or 0
+                
+                next_level = movement.get_next_level(current_level)
+                self._send_closure_command(device_id, movement.unit, next_level)
+                
+                if not movement.is_active:
+                    devices_to_remove.append(device_id)
+                    logging.info(f"Gradual movement completed for {device_id}: reached {movement.target_level}%")
+        
+        # Clean up completed movements
+        for device_id in devices_to_remove:
+            del self.active_movements[device_id]
 
     def onHeartbeat(self):
         self.runCounter -= 1
@@ -650,6 +818,9 @@ class BasePlugin:
             if self._temp_log_active:
                 Domoticz.Status(f"Fast polling ended. Returning to standard interval ({interval}s)")
                 self._temp_log_active = False
+
+        # Process gradual movements
+        self._process_gradual_movements()
 
         if self.runCounter <= 0 or self.heartbeat:
 
@@ -968,16 +1139,25 @@ class BasePlugin:
                             self.sunsetDelay = int(val)
                         except ValueError:
                             Domoticz.Error(f"Invalid SUNSET_DELAY value in config.txt: {val}")
+                    elif key == "SLOW_MOVEMENT_ENABLED":
+                        self.slow_movement_enabled = val.lower() == "true"
+                    elif key == "SLOW_MOVEMENT_STEP":
+                        try:
+                            self.slow_movement_step = int(val)
+                        except ValueError:
+                            Domoticz.Error(f"Invalid SLOW_MOVEMENT_STEP value in config.txt: {val}")
+                    elif key == "SLOW_MOVEMENT_DELAY":
+                        try:
+                            self.slow_movement_delay = float(val)
+                        except ValueError:
+                            Domoticz.Error(f"Invalid SLOW_MOVEMENT_DELAY value in config.txt: {val}")
 
             if log:
                 Domoticz.Log("Config.txt loaded.")
-                # Domoticz.Log(
-                #     f"Domoticz @ {self.domoticz_host}:{self.domoticz_port} | "
-                #     f"Polling intervals Day / Night: {self.dayInterval}s / {self.nightInterval}s | "
-                #     f"Temp: {self.temp_delay}s delay for {self.temp_time}s | "
-                #     f"Sunset and Sunrise refresh time: {self.sun_refresh_time} | "
-                #     f"Sunrise delay: {self.sunriseDelay}m, Sunset delay: {self.sunsetDelay}m"
-                # )
+                if self.slow_movement_enabled:
+                    Domoticz.Log(f"Slow movement enabled: {self.slow_movement_step}% steps, {self.slow_movement_delay}s delay")
+                else:
+                    Domoticz.Log("Slow movement disabled")
         except Exception as e:
             Domoticz.Error(f"Error in load_config_txt: {str(e)}")
 

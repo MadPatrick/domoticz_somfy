@@ -1,40 +1,7 @@
     def onCommand(self, DeviceId, Unit, Command, Level, Hue):
         Domoticz.Debug(f"onCommand: DeviceId: {DeviceId}, Unit: {Unit}, Command: {Command}, Level: {Level}, Hue: {Hue}")
         
-        # Get device type to check if it's a roller shutter
-        is_roller_shutter = False
-        if DeviceId in Devices:
-            device_info = Devices[DeviceId]
-            # Check device type by looking at unit type/switchtype
-            # RollerShutter has switchtype 21
-            if Unit == 1 and hasattr(device_info, 'Units'):
-                unit_obj = device_info.Units[Unit]
-                if hasattr(unit_obj, 'SwitchType') and unit_obj.SwitchType == 21:
-                    is_roller_shutter = True
-        
-        # Handle slow movement for roller shutters only
-        if self.slow_movement_enabled and Unit == 1 and is_roller_shutter:
-            if Command in ("Off", "Close"):
-                target_level = 0
-                self._start_gradual_movement(DeviceId, Unit, target_level)
-                return True
-            elif Command in ("On", "Open"):
-                target_level = 100
-                self._start_gradual_movement(DeviceId, Unit, target_level)
-                return True
-            elif "Set Level" in Command:
-                target_level = max(100 - int(Level), 0)
-                self._start_gradual_movement(DeviceId, Unit, target_level)
-                return True
-            elif Command == "Stop":
-                # Stop the gradual movement
-                if DeviceId in self.active_movements:
-                    del self.active_movements[DeviceId]
-                commands_data = self._build_command("stop", DeviceId, Unit)
-                self._send_command(commands_data)
-                return True
-        
-        # Original command handling for non-slow-movement cases
+        # Original command handling
         self.actions_serialized = []
         commands_serialized = []
         action = {}

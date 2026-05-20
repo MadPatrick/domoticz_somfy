@@ -791,7 +791,7 @@ class BasePlugin:
                         Domoticz.Status("Updating device : " + Devices[dev].Units[1].Name)
                         logging.info("Updating device : " + Devices[dev].Units[1].Name)
                         if lumlevel not in (0, 120000):
-                            nValue = 3
+                            nValue = 0
                             sValue = str(lumlevel)
                             UpdateDevice(dev, 1, nValue, sValue)
 
@@ -843,7 +843,7 @@ class BasePlugin:
                     subtype2 = 73
                 elif device["definition"]["uiClass"] == "LightSensor":
                     deviceType = 246
-                    swtype = 12
+                    swtype = 0
                     subtype2 = 1
             elif device["definition"]["uiClass"] == "Pod":
                 deviceType = 244

@@ -843,7 +843,7 @@ class BasePlugin:
                     subtype2 = 73
                 elif device["definition"]["uiClass"] == "LightSensor":
                     deviceType = 246
-                    swtype = 12
+                    swtype = 11
                     subtype2 = 1
             elif device["definition"]["uiClass"] == "Pod":
                 deviceType = 244

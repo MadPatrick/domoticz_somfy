@@ -696,8 +696,11 @@ class BasePlugin:
                         filtered_devices = self.tahoma.get_devices()
                     if filtered_devices is not None:
                         self.update_devices_status(utils.filter_states(filtered_devices))
-                except Exception:
-                    pass
+                except Exception as e:
+                    # STAP 1 FIX: Replace silent 'pass' with proper logging
+                    logging.error(f"Error during device status update: {str(e)}")
+                    Domoticz.Error(f"Failed to update device status: {str(e)}")
+                    # Don't mark as disconnected here; let the next heartbeat cycle determine connection status
 
             self.runCounter = interval
             self.heartbeat = False

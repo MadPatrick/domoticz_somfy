@@ -156,11 +156,6 @@ class BasePlugin:
         self.temp_delay = 10
         self.temp_time  = 60
 
-        # Slow movement settings
-        self.slow_movement_enabled = False
-        self.slow_movement_step = 5
-        self.slow_movement_delay = 0.5
-
         self.temp_interval_end = time.time()
 
         self.connected = None  # None = unknown, True = connected, False = error
@@ -495,47 +490,6 @@ class BasePlugin:
     def onMessage(self, Connection, Data):
         Domoticz.Debug("onMessage called (not implemented). Data: " + str(Data))
 
-    def _is_roller_shutter(self, DeviceId):
-        """Check if device is a RollerShutter by checking its definition."""
-        try:
-            if DeviceId in Devices:
-                # Check device attributes or name pattern
-                device_name = Devices[DeviceId].Name.lower()
-                # Additional check: look for RollerShutter in device properties if available
-                return "roller" in device_name or "shutter" in device_name or "volet" in device_name
-        except:
-            pass
-        return False
-
-    def _build_slow_movement_commands(self, current_level, target_level):
-        """Build a sequence of commands for slow movement between levels."""
-        commands_list = []
-        
-        if current_level < target_level:
-            # Opening (increasing level)
-            step = self.slow_movement_step
-            current = current_level
-            while current < target_level:
-                next_level = min(current + step, target_level)
-                commands_list.append({
-                    "name": "setClosure",
-                    "parameters": [max(100 - next_level, 0)]
-                })
-                current = next_level
-        else:
-            # Closing (decreasing level)
-            step = self.slow_movement_step
-            current = current_level
-            while current > target_level:
-                next_level = max(current - step, target_level)
-                commands_list.append({
-                    "name": "setClosure",
-                    "parameters": [max(100 - next_level, 0)]
-                })
-                current = next_level
-        
-        return commands_list
-
     def onCommand(self, DeviceId, Unit, Command, Level, Hue):
         Domoticz.Debug(f"onCommand: DeviceId: {DeviceId}, Unit: {Unit}, Command: {Command}, Level: {Level}, Hue: {Hue}")
         self.actions_serialized = []
@@ -552,34 +506,10 @@ class BasePlugin:
             elif Command == "Stop":
                 commands["name"] = "stop"
             elif "Set Level" in Command:
-                # Check if slow movement is enabled and device is a roller shutter
-                if self.slow_movement_enabled and self._is_roller_shutter(DeviceId):
-                    try:
-                        current_level = int(Devices[DeviceId].Units[Unit].sValue or 0)
-                    except (ValueError, TypeError):
-                        current_level = 0
-                    
-                    target_level = int(Level)
-                    
-                    # If levels are different, use slow movement
-                    if current_level != target_level:
-                        slow_commands = self._build_slow_movement_commands(current_level, target_level)
-                        for slow_cmd in slow_commands:
-                            commands_serialized.append(slow_cmd)
-                        # Don't add another command below
-                        commands = None
-                    else:
-                        # Levels are same, just set normally
-                        commands["name"] = "setClosure"
-                        tmp = max(100 - int(Level), 0)
-                        params.append(tmp)
-                        commands["parameters"] = params
-                else:
-                    # Normal fast movement
-                    commands["name"] = "setClosure"
-                    tmp = max(100 - int(Level), 0)
-                    params.append(tmp)
-                    commands["parameters"] = params
+                commands["name"] = "setClosure"
+                tmp = max(100 - int(Level), 0)
+                params.append(tmp)
+                commands["parameters"] = params
             else:
                 Domoticz.Error(f"Command {Command} not supported for unit 1")
                 return False
@@ -596,15 +526,13 @@ class BasePlugin:
             Domoticz.Error(f"Unit {Unit} not supported")
             return False
 
-        if commands is not None:
-            commands_serialized.append(commands)
-        
+        commands_serialized.append(commands)
         action["deviceURL"] = DeviceId
         action["commands"] = commands_serialized
         self.actions_serialized.append(action)
 
         data = {
-            "label": f"Domoticz - {Devices[DeviceId].Units[Unit].Name} - movement",
+            "label": f"Domoticz - {Devices[DeviceId].Units[Unit].Name} - {commands['name']}",
             "actions": self.actions_serialized
         }
         if self.local:
@@ -1040,18 +968,6 @@ class BasePlugin:
                             self.sunsetDelay = int(val)
                         except ValueError:
                             Domoticz.Error(f"Invalid SUNSET_DELAY value in config.txt: {val}")
-                    elif key == "SLOW_MOVEMENT_ENABLED":
-                        self.slow_movement_enabled = val.lower() in ("true", "1", "yes")
-                    elif key == "SLOW_MOVEMENT_STEP":
-                        try:
-                            self.slow_movement_step = int(val)
-                        except ValueError:
-                            Domoticz.Error(f"Invalid SLOW_MOVEMENT_STEP value in config.txt: {val}")
-                    elif key == "SLOW_MOVEMENT_DELAY":
-                        try:
-                            self.slow_movement_delay = float(val)
-                        except ValueError:
-                            Domoticz.Error(f"Invalid SLOW_MOVEMENT_DELAY value in config.txt: {val}")
 
             if log:
                 Domoticz.Log("Config.txt loaded.")

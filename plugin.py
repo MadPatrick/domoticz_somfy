@@ -120,6 +120,13 @@ import ipaddress
 
 _CONNECTION_DEVICE_ID = "connection_indicator"
 
+# Domoticz injects these as module-level globals at runtime.
+# Declaring them here prevents NameError when the plugin is loaded
+# before Domoticz has injected them, and satisfies static analysis.
+Devices = {}
+Parameters = {}
+Images = {}
+
 class BasePlugin:
     def __init__(self):
         self.enabled = False
@@ -605,14 +612,14 @@ class BasePlugin:
                 self.tahoma.tahoma_login(str(Parameters["Username"]), str(Parameters["Password"]))
             except Exception as e:
                 self._login_fail_count += 1
-                Domoticz.Error(f"Login mislukt, commando wordt afgebroken: {e}")
+                Domoticz.Error(f"Login failed, command aborted: {e}")
                 if self._login_fail_count >= self._max_login_failures:
                     self._do_reconnect()
                 return False
 
             if not self.tahoma.logged_in:
                 self._login_fail_count += 1
-                Domoticz.Error("Login mislukt (geen exception), commando wordt afgebroken")
+                Domoticz.Error("Login failed (no exception), command aborted")
                 if self._login_fail_count >= self._max_login_failures:
                     self._do_reconnect()
                 return False
@@ -624,7 +631,7 @@ class BasePlugin:
                     self.tahoma.register_listener()
                     self.listener_registered = True
             except Exception as e:
-                Domoticz.Error(f"register_listener mislukt na login: {e}")
+                Domoticz.Error(f"register_listener failed after login: {e}")
                 self.listener_registered = False
                 return False
 

@@ -78,7 +78,7 @@ class TahomaWebApi:
         url_gen = "/enduser-mobile-web/enduserAPI/config/"+pin+"/local/tokens/generate"
         logging.debug("generate token: url_gen = '" + url_gen + "'")
         logging.debug("generate token: cookie = '" + str(self.cookie) + "'")
-        response = requests.get(self.base_url_web + url_gen, headers=self.headers_json, cookies=self.cookie)
+        response = requests.get(self.base_url_web + url_gen, headers=self.headers_json, cookies=self.cookie, timeout=self.timeout)
         logging.debug("generate token: response = '" + str(response) + "'")
         
         if response.status_code == 200:
@@ -110,7 +110,7 @@ class TahomaWebApi:
     def activate_token(self, pin, token):
         url_act = "/enduser-mobile-web/enduserAPI/config/"+pin+"/local/tokens"
         data_act = {"label": "Domoticz token", "token": token, "scope": "devmode"}
-        response = requests.post(self.base_url_web + url_act, headers=self.headers_json, json=data_act, cookies=self.cookie)
+        response = requests.post(self.base_url_web + url_act, headers=self.headers_json, json=data_act, cookies=self.cookie, timeout=self.timeout)
         logging.debug("activate_token: response: "+str(response.json()))
 
         if response.status_code == 200:
@@ -127,7 +127,7 @@ class TahomaWebApi:
 
     def get_tokens(self, pin):
         url_act = "/enduser-mobile-web/enduserAPI/config/"+pin+"/local/tokens/devmode"
-        response = requests.get(self.base_url_web + url_act, headers=self.headers_json, cookies=self.cookie)
+        response = requests.get(self.base_url_web + url_act, headers=self.headers_json, cookies=self.cookie, timeout=self.timeout)
 
         if response.status_code == 200:
             logging.debug("succeeded to get tokens: " + str(response.json()))
@@ -140,7 +140,7 @@ class TahomaWebApi:
 
     def delete_tokens(self, pin, uuid):
         url_del = "/enduser-mobile-web/enduserAPI/config/"+pin+"/local/tokens/"+str(uuid)
-        response = requests.delete(self.base_url_web + url_del, headers=self.headers_json, cookies=self.cookie)
+        response = requests.delete(self.base_url_web + url_del, headers=self.headers_json, cookies=self.cookie, timeout=self.timeout)
 
         if response.status_code == 200:
             logging.debug("succeeded to delete token: " + str(response.json()))
@@ -163,7 +163,7 @@ class SomfyBox(TahomaWebApi):
     def get_version(self):
         if self.token is None or self.token == "0":
             raise exceptions.TahomaException("No token has been provided")
-        response = requests.get(self.base_url_local + "/apiVersion", headers=self.headers_with_token, verify=False)
+        response = requests.get(self.base_url_local + "/apiVersion", headers=self.headers_with_token, verify=False, timeout=10)
         if response.status_code == 200:
             logging.debug("succeeded to get API version: " + str(response.json()))
         else:
@@ -174,7 +174,7 @@ class SomfyBox(TahomaWebApi):
     def get_gateways(self):
         if self.token is None or self.token == "0":
             raise exceptions.TahomaException("No token has been provided")
-        response = requests.get(self.base_url_local + "/setup/gateways", headers=self.headers_with_token, verify=False)
+        response = requests.get(self.base_url_local + "/setup/gateways", headers=self.headers_with_token, verify=False, timeout=10)
         logging.debug(response)
         if response.status_code == 200:
             logging.debug("succeeded to get local API gateways: " + str(response.json()))
@@ -228,7 +228,7 @@ class SomfyBox(TahomaWebApi):
             raise exceptions.TahomaException("Invalid url, needs to start with io://")
         url = self.base_url_local + "/setup/devices/" + urllib.parse.quote(device, safe="") + "/states"
         logging.debug("url for device state: " + str(url))
-        response = requests.get(url, headers=self.headers_with_token, verify=False)
+        response = requests.get(url, headers=self.headers_with_token, verify=False, timeout=10)
         logging.debug(response)
         if response.status_code == 200:
             logging.debug("succeeded to get local API device states: " + str(response.json()))
@@ -247,7 +247,7 @@ class SomfyBox(TahomaWebApi):
         for i in range(1, 4):
             # do several retries on reaching events end point before going to time out error
             try:
-                response = requests.post(self.base_url_local + "/events/" + self.listener.listenerId + "/fetch", headers=self.headers_with_token, verify=False)
+                response = requests.post(self.base_url_local + "/events/" + self.listener.listenerId + "/fetch", headers=self.headers_with_token, verify=False, timeout=10)
                 logging.debug("get events response: status '" + str(response.status_code) + "' response body: '" + str(response) + "'")
                 if response.status_code != 200:
                     logging.error("error during get events, status: " + str(response.status_code) + ", " + str(response.text))
@@ -282,7 +282,7 @@ class SomfyBox(TahomaWebApi):
         logging.debug("start register")
         if self.token is None or self.token == "0":
             raise exceptions.TahomaException("No token has been provided")
-        response = self.listener.register_listener(self.base_url_local + "/events/register", headers=self.headers_with_token, verify=False)
+        response = self.listener.register_listener(self.base_url_local + "/events/register", headers=self.headers_with_token, verify=False, timeout=10)
         return response
 
     #execution endpoints
@@ -292,7 +292,7 @@ class SomfyBox(TahomaWebApi):
         logging.info("Sending command to local api")
         logging.debug("onCommand: data '"+str(json_data)+"'")
         try:
-            response = requests.post(self.base_url_local + "/exec/apply", headers=self.headers_with_token, data=json.dumps(json_data), verify=False)
+            response = requests.post(self.base_url_local + "/exec/apply", headers=self.headers_with_token, json=json_data, verify=False)
         except requests.exceptions.RequestException as exp:
             logging.error("Send command returns RequestException: " + str(exp))
             return ""

@@ -380,11 +380,12 @@ class BasePlugin:
         """Attempt to re-login and re-register the listener after repeated login failures."""
         Domoticz.Log(f"Reconnect poging na {self._login_fail_count} aaneengesloten login mislukkingen")
         logging.warning(f"Attempting reconnect after {self._login_fail_count} consecutive login failures")
+        # Reset the counter first so a failing reconnect doesn't trigger another immediate reconnect
+        self._login_fail_count = 0
         try:
             self.tahoma.tahoma_login(str(Parameters["Username"]), str(Parameters["Password"]))
             if self.tahoma.logged_in:
                 self.tahoma.register_listener()
-                self._login_fail_count = 0
                 Domoticz.Log("Reconnect geslaagd")
                 logging.info("Reconnect succeeded")
                 return True
@@ -817,7 +818,10 @@ class BasePlugin:
 
                     if status_num > 0 and level is not None:
                         if Devices[dev].Units[status_num].sValue:
-                            int_level = int(Devices[dev].Units[status_num].sValue)
+                            try:
+                                int_level = int(Devices[dev].Units[status_num].sValue)
+                            except (ValueError, TypeError):
+                                int_level = 0
                         else:
                             int_level = 0
                         if level != int_level:
@@ -1084,9 +1088,9 @@ def onMessage(Connection, Data):
     global _plugin
     _plugin.onMessage(Connection, Data)
 
-def onCommand(DeviceId, Unit, Command, Level, Color):
+def onCommand(DeviceId, Unit, Command, Level, Hue):
     global _plugin
-    _plugin.onCommand(DeviceId, Unit, Command, Level, Color)
+    _plugin.onCommand(DeviceId, Unit, Command, Level, Hue)
 
 def onDisconnect(Connection):
     global _plugin
@@ -1156,7 +1160,10 @@ def UpdateDevice(Device, Unit, nValue, sValue, AlwaysUpdate=False):
             try:
                 Devices[Device].Units[Unit].nValue = nValue
                 Devices[Device].Units[Unit].sValue = sValue
-                Devices[Device].Units[Unit].LastLevel = int(sValue)
+                try:
+                    Devices[Device].Units[Unit].LastLevel = int(sValue)
+                except (ValueError, TypeError):
+                    pass  # sValue niet numeriek (bijv. "open"/"closed"), LastLevel overslaan
                 Devices[Device].Units[Unit].Update()
                 Domoticz.Debug("Update " + str(nValue) + ":'" + str(sValue) + "' (" + Devices[Device].Units[Unit].Name + ")")
             except Exception as e:

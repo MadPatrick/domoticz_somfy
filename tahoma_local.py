@@ -257,14 +257,14 @@ class SomfyBox(TahomaWebApi):
                             logging.error("fetch events failed due to no valid listener registered")
                             raise exceptions.NoListenerFailure()
                     utils.handle_response(response, "get events")
-                    return
+                    return []
                 elif response.status_code == 200:
                     strData = response.json()
                     self.listener.refresh_listener()
                     logging.debug("succeeded to get local API events: " + str(response.json()))
                     if "DeviceStateChangedEvent" not in response.text:
                         logging.debug("get_events: no DeviceStateChangedEvent found in response: " + str(strData))
-                        return
+                        return []
                     else:
                         return response.json()
 

@@ -1,12 +1,16 @@
 ###################################################################################
 # Tahoma/Connexoon IO blind plugin
 #
+#
+# All credits for the plugin are for Nonolk, who is the origin plugin creator
+#
+#
 ###################################################################################
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.3.3" externallink="https://github.com/MadPatrick/somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.3.1" externallink="https://github.com/MadPatrick/somfy">
     <description>
         <br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
-        Version: 5.3.3
+        Version: 5.3.1
         <br/>This plugin connects to the Tahoma or Connexoon box either via the web API or via local access.
         <br/>Various devices are supported (RollerShutter, LightSensor, Screen, Awning, Window, VenetianBlind, etc.).
         <br/>For new devices, please raise a ticket at the Github link above.
@@ -40,7 +44,7 @@
         <br/>Local PIN: connect directly to the box using the Gateway PIN (requires DNS or /etc/hosts entry for &lt;PIN&gt;.local)
         <br/>Local IP: connect directly to the box using an IP address (no DNS required)
         <br/>
-        <br/>Somfy is deprecating the Web access, so it is better to use the local API
+        <br/>Somfy is depreciating the Web access, so it is better to use the local API
         <br/>Preferable use the Local IP mode</td>
     </tr>
     <tr>
@@ -73,7 +77,7 @@
         <param field="Username" label="Username" width="200px" required="true" default=""/>
         <param field="Password" label="Password" width="200px" required="true" default="" password="true"/>
         <param field="Mode4" label="Connection" width="150px">
-            <description><br/>Somfy is deprecating the Web access, so it is better to use the local API</description>
+            <description><br/>Somfy is depreciating the Web access, so it is better to use the local API</description>
             <options>
                 <option label="Web" value="Web"/>
                 <option label="Local PIN" value="Local"/>
@@ -152,7 +156,7 @@ class BasePlugin:
         self.temp_delay = 10
         self.temp_time  = 60
 
-        self.temp_interval_end = 0
+        self.temp_interval_end = time.time()
 
         self.connected = None  # None = unknown, True = connected, False = error
         self._last_connected_time = None
@@ -164,8 +168,7 @@ class BasePlugin:
         # Login failure tracking / auto-reconnect
         self._login_fail_count = 0
         self._max_login_failures = 3  # number of consecutive failures before a reconnect is attempted
-        self.listener_registered = False
-        
+
     def onStart(self):
         """
         Plugin initialization.
@@ -205,12 +208,7 @@ class BasePlugin:
         # --- Connect to Tahoma/Connexoon box ---
         pin     = Parameters.get("Address", "").strip()
         mode3   = Parameters.get("Mode3", "").strip()
-        try:
-            port = int(Parameters.get("Port", 8443))
-        except (TypeError, ValueError):
-            Domoticz.Error(f"Invalid port number: '{Parameters.get('Port')}'. Plugin cannot start.")
-            self.enabled = False
-            return False
+        port    = int(Parameters.get("Port", 8443))
         mode4   = Parameters.get("Mode4", "LocalIP")
 
         if mode4 == "LocalIP":
@@ -238,20 +236,14 @@ class BasePlugin:
             self.local_ip_mode = False
             Domoticz.Log("Web connection configured (via Somfy cloud)")
 
-        self.create_connection_device()
-
         try:
             self.tahoma.tahoma_login(str(Parameters.get("Username")), str(Parameters.get("Password")))
         except Exception as exp:
             Domoticz.Error("Failed to login: " + str(exp))
-            self._last_error = "Login failed"
-            self.update_connection_device(False)
             return False
 
         # pin (Address) is used by setup_and_sync_devices for token management
-        if not self.setup_and_sync_devices(pin):
-            self.enabled = False
-            return False
+        self.setup_and_sync_devices(pin)
 
     def setup_and_sync_devices(self, pin):
         if not self.tahoma.logged_in:
@@ -297,14 +289,9 @@ class BasePlugin:
                     Domoticz.Log("Token present, loaded from configuration")
 
         try:
-            if not self.listener_registered:
-                self.tahoma.register_listener()
-                self.listener_registered = True
+            self.tahoma.register_listener()
         except Exception as e:
             Domoticz.Error(f"Connection failed during startup: {e}")
-            self._last_error = "Connection failed"
-            self.listener_registered = False
-            self.update_connection_device(False)
             self.enabled = False
             return False
 
@@ -319,8 +306,6 @@ class BasePlugin:
                             "Local IP mode: stored token rejected and no valid Gateway PIN in Address field. "
                             "Please enter the Gateway PIN in Address and set Reset token to True."
                         )
-                        self._last_error = "Auth failed - no PIN"
-                        self.update_connection_device(False)
                         self.enabled = False
                         return False
                     Domoticz.Log("Local IP mode: stored token rejected (401), regenerating token using PIN...")
@@ -330,15 +315,10 @@ class BasePlugin:
                         setConfigItem('token', self.tahoma.token)
                         setConfigItem('token_created', datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
                         Domoticz.Log("Token refreshed (LocalIP mode)")
-                        if not self.listener_registered:
-                            self.tahoma.register_listener()
-                            self.listener_registered = True
+                        self.tahoma.register_listener()
                         filtered_devices = self.tahoma.get_devices()
                     except Exception as retry_e:
                         Domoticz.Error("Failed to get devices after token regeneration: " + str(retry_e))
-                        self._last_error = "Token refresh failed"
-                        self.listener_registered = False
-                        self.update_connection_device(False)
                         self.enabled = False
                         return False
                 else:
@@ -349,27 +329,18 @@ class BasePlugin:
                         setConfigItem('token', self.tahoma.token)
                         setConfigItem('token_created', datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
                         Domoticz.Log("Token refreshed")
-                        if not self.listener_registered:
-                            self.tahoma.register_listener()
-                            self.listener_registered = True
+                        self.tahoma.register_listener()
                         filtered_devices = self.tahoma.get_devices()
                     except Exception as retry_e:
                         Domoticz.Error("Failed to get devices after token regeneration: " + str(retry_e))
-                        self._last_error = "Token refresh failed"
-                        self.listener_registered = False
-                        self.update_connection_device(False)
                         self.enabled = False
                         return False
             else:
                 Domoticz.Error("Failed to get devices: authentication failure")
-                self._last_error = "Auth failed"
-                self.update_connection_device(False)
                 self.enabled = False
                 return False
         except exceptions.TahomaException as e:
             Domoticz.Error("Failed to get devices: " + str(e))
-            self._last_error = "Get devices failed"
-            self.update_connection_device(False)
             self.enabled = False
             return False
 
@@ -400,28 +371,20 @@ class BasePlugin:
         return True
 
     def _do_reconnect(self):
-        """Attempt to re-login and re-register the listener after repeated login failures.
-        Updates self.connected and the connection device when successful."""
-        Domoticz.Log(f"Reconnect attempt after {self._login_fail_count} consecutive login failures")
+        """Attempt to re-login and re-register the listener after repeated login failures."""
+        Domoticz.Log(f"Reconnect poging na {self._login_fail_count} aaneengesloten login mislukkingen")
         logging.warning(f"Attempting reconnect after {self._login_fail_count} consecutive login failures")
         try:
             self.tahoma.tahoma_login(str(Parameters["Username"]), str(Parameters["Password"]))
             if self.tahoma.logged_in:
-                if not self.listener_registered:
-                    self.tahoma.register_listener()
-                    self.listener_registered = True
+                self.tahoma.register_listener()
                 self._login_fail_count = 0
-                self.connected = True
-                self._last_error = ""
-                self._last_connected_time = datetime.datetime.now()
-                self.update_connection_device(True)
-                Domoticz.Log("Reconnect successful")
+                Domoticz.Log("Reconnect geslaagd")
                 logging.info("Reconnect succeeded")
                 return True
         except Exception as e:
-            Domoticz.Error(f"Reconnect failed: {e}")
+            Domoticz.Error(f"Reconnect mislukt: {e}")
             logging.error(f"Reconnect failed: {e}")
-            self.listener_registered = False
         return False
 
     def onStop(self):
@@ -471,8 +434,6 @@ class BasePlugin:
         if not first_refresh and not daily_refresh_needed:
             return
 
-        refresh_success = False
-
         try:
             api_url = f"http://{self.domoticz_host}:{self.domoticz_port}/json.htm?type=command&param=getSunRiseSet"
             with urllib.request.urlopen(api_url, timeout=10) as response:
@@ -493,7 +454,6 @@ class BasePlugin:
                     minute=int(self.last_sunset.split(":")[1]),
                     second=0, microsecond=0
                 )
-                refresh_success = True
 
             Domoticz.Log(
                 f"Sunrise/sunset refreshed @ {now.strftime('%H:%M')}: "
@@ -508,8 +468,8 @@ class BasePlugin:
             if not self.last_sunset:
                 self.last_sunset = "22:00"
 
-        if refresh_success:
-            self._sun_refreshed_today = today
+        # Mark today as refreshed regardless of success/failure
+        self._sun_refreshed_today = today
 
     def _day_night_times_str(self):
         """Returns a formatted string with day/night start times based on sunrise/sunset + delays."""
@@ -521,9 +481,6 @@ class BasePlugin:
 
         day_start_min   = sr_hour * 60 + sr_min - self.sunriseDelay
         night_start_min = ss_hour * 60 + ss_min + self.sunsetDelay
-
-        day_start_min %= 1440
-        night_start_min %= 1440
 
         day_str   = f"{day_start_min // 60:02d}:{day_start_min % 60:02d}"
         night_str = f"{night_start_min // 60:02d}:{night_start_min % 60:02d}"
@@ -550,7 +507,7 @@ class BasePlugin:
                 commands["name"] = "stop"
             elif "Set Level" in Command:
                 commands["name"] = "setClosure"
-                tmp = max(0, min(100 - int(Level), 100))
+                tmp = max(100 - int(Level), 0)
                 params.append(tmp)
                 commands["parameters"] = params
             else:
@@ -559,7 +516,7 @@ class BasePlugin:
         elif Unit == 2:
             if "Set Level" in Command:
                 commands["name"] = "setOrientation"
-                tmp = max(1, min(100 - int(Level), 100))
+                tmp = max(100 - int(Level), 1)
                 params.append(tmp)
                 commands["parameters"] = params
             else:
@@ -605,12 +562,9 @@ class BasePlugin:
             self._login_fail_count = 0
 
             try:
-                if not self.listener_registered:
-                    self.tahoma.register_listener()
-                    self.listener_registered = True
+                self.tahoma.register_listener()
             except Exception as e:
                 Domoticz.Error(f"register_listener mislukt na login: {e}")
-                self.listener_registered = False
                 return False
 
         # Send command
@@ -699,30 +653,21 @@ class BasePlugin:
 
         if self.runCounter <= 0 or self.heartbeat:
 
-            # --- Stap 1: verbinding testen en devices ophalen ---
-            fetch_ok = False
-            filtered_devices = None
             try:
                 if self.local:
                     filtered_devices = self.tahoma.get_devices()
                 else:
                     if not self.tahoma.logged_in:
                         self.tahoma.tahoma_login(str(Parameters["Username"]), str(Parameters["Password"]))
-                    # Voor web-mode worden devices later opgehaald (onder stap 2)
+                    filtered_devices = None
 
-                # Listener opnieuw registreren indien nodig (bijv. na verbindingsverlies)
-                if not self.listener_registered:
-                    try:
-                        self.tahoma.register_listener()
-                        self.listener_registered = True
-                        Domoticz.Log("Listener re-registered after reconnect")
-                        logging.info("Listener re-registered after reconnect")
-                    except Exception as e:
-                        Domoticz.Error(f"Failed to re-register listener after reconnect: {e}")
-                        logging.error(f"Failed to re-register listener after reconnect: {e}")
-                        self.listener_registered = False
-
-                fetch_ok = True
+                if self.connected is False:
+                    Domoticz.Log("Connection restored")
+                self.connected = True
+                self._last_error = ""
+                self._last_connected_time = datetime.datetime.now()
+                self._login_fail_count = 0
+                self.update_connection_device(True)
 
             except Exception as e:
                 msg = str(e).lower()
@@ -740,48 +685,19 @@ class BasePlugin:
                     Domoticz.Error(f"{short} (box not reachable)")
                     self._last_error = short
                     self.update_connection_device(False)
-                    logging.error(f"Connection lost: {short}")
-
-                # Probeer actief te herverbinden na meerdere opeenvolgende fouten.
-                # _do_reconnect werkt de status zelf bij als het lukt; als het mislukt
-                # blijft de status op False zodat de volgende heartbeat het opnieuw probeert.
                 if self._login_fail_count >= self._max_login_failures:
-                    reconnected = self._do_reconnect()
-                    if not reconnected:
-                        self.connected = False
-                        self.listener_registered = False
-                else:
-                    self.connected = False
-                    self.listener_registered = False
+                    self._do_reconnect()
+                self.connected = False
+                filtered_devices = None
 
-            # --- Stap 2: devices bijwerken als verbinding OK is ---
-            if fetch_ok:
+            if self.connected:
                 try:
                     if not self.local:
                         filtered_devices = self.tahoma.get_devices()
-
                     if filtered_devices is not None:
                         self.update_devices_status(utils.filter_states(filtered_devices))
-
-                    # Alles geslaagd: nu pas status op Connected zetten
-                    was_disconnected = self.connected is False
-                    self.connected = True
-                    self._last_error = ""
-                    self._last_connected_time = datetime.datetime.now()
-                    self._login_fail_count = 0
-                    self.update_connection_device(True)
-
-                    if was_disconnected:
-                        Domoticz.Log("Connection restored")
-                        logging.info("Connection restored")
-
-                except Exception as e:
-                    Domoticz.Error(f"Device status update failed: {e}")
-                    logging.error(f"Device status update failed: {e}")
-                    # Verbinding leek OK maar devices ophalen mislukte: status onbekend houden
-                    self._last_error = "Device update failed"
-                    self.update_connection_device(False)
-                    self.connected = False
+                except Exception:
+                    pass
 
             self.runCounter = interval
             self.heartbeat = False
@@ -934,18 +850,6 @@ class BasePlugin:
                 subtype2 = 73
                 swtype = 9
                 used = 0
-            else:
-                Domoticz.Error(
-                    "Unsupported device skipped: "
-                    + str(device.get("label", "unknown"))
-                    + " (deviceURL="
-                    + str(device.get("deviceURL", "unknown"))
-                    + ", uiClass="
-                    + str(device.get("definition", {}).get("uiClass", "unknown"))
-                    + ")"
-                )
-                logging.error("Unsupported device skipped: " + str(device))
-                continue
 
             created_devices += 1
             Domoticz.Device(DeviceID=device["deviceURL"])
@@ -1067,6 +971,13 @@ class BasePlugin:
 
             if log:
                 Domoticz.Log("Config.txt loaded.")
+                # Domoticz.Log(
+                #     f"Domoticz @ {self.domoticz_host}:{self.domoticz_port} | "
+                #     f"Polling intervals Day / Night: {self.dayInterval}s / {self.nightInterval}s | "
+                #     f"Temp: {self.temp_delay}s delay for {self.temp_time}s | "
+                #     f"Sunset and Sunrise refresh time: {self.sun_refresh_time} | "
+                #     f"Sunrise delay: {self.sunriseDelay}m, Sunset delay: {self.sunsetDelay}m"
+                # )
         except Exception as e:
             Domoticz.Error(f"Error in load_config_txt: {str(e)}")
 
@@ -1154,7 +1065,7 @@ def DumpConfigToLog():
 # Configuration Helpers
 #############
 
-def getConfigItem(Key=None, Default=None):
+def getConfigItem(Key=None, Default={}):
     Value = Default
     try:
         Config = Domoticz.Configuration()
@@ -1193,10 +1104,7 @@ def UpdateDevice(Device, Unit, nValue, sValue, AlwaysUpdate=False):
             try:
                 Devices[Device].Units[Unit].nValue = nValue
                 Devices[Device].Units[Unit].sValue = sValue
-                try:
-                    Devices[Device].Units[Unit].LastLevel = int(float(sValue))
-                except (TypeError, ValueError):
-                    logging.debug("LastLevel not updated, non-numeric sValue: " + str(sValue))
+                Devices[Device].Units[Unit].LastLevel = int(sValue)
                 Devices[Device].Units[Unit].Update()
                 Domoticz.Debug("Update " + str(nValue) + ":'" + str(sValue) + "' (" + Devices[Device].Units[Unit].Name + ")")
             except Exception as e:

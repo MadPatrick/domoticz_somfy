@@ -245,7 +245,6 @@ class SomfyBox(TahomaWebApi):
             logging.error("cannot fetch events if no listener registered")
             raise exceptions.NoListenerFailure()
         for i in range(1, 4):
-            # do several retries on reaching events end point before going to time out error
             try:
                 response = requests.post(self.base_url_local + "/events/" + self.listener.listenerId + "/fetch", headers=self.headers_with_token, verify=False, timeout=10)
                 logging.debug("get events response: status '" + str(response.status_code) + "' response body: '" + str(response) + "'")
@@ -256,7 +255,6 @@ class SomfyBox(TahomaWebApi):
                             self.listener.valid = False
                             logging.error("fetch events failed due to no valid listener registered")
                             raise exceptions.NoListenerFailure()
-                    utils.handle_response(response, "get events")
                     return []
                 elif response.status_code == 200:
                     strData = response.json()
@@ -272,7 +270,6 @@ class SomfyBox(TahomaWebApi):
                     logging.info("Return status " + str(response.status_code))
             except requests.exceptions.RequestException as exp:
                 logging.error("get_events RequestException: " + str(exp))
-            # wait increasing time before next try
             time.sleep(i ** 3)
         else:
             raise exceptions.TooManyRetries

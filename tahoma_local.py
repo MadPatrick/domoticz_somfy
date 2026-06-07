@@ -85,7 +85,7 @@ class TahomaWebApi:
             self.__token = response.json()['token']
             self.headers_with_token["Authorization"] = "Bearer " + str(self.__token)
             logging.debug("succeeded to generate token: " + str(self.token))
-            return response.json()  # âœ… STAP 2 FIX: Return on success
+            return response.json()
         elif ((response.status_code == 401) or (response.status_code == 400)):
             self.__logged_in = False
             self.cookie = None
@@ -93,7 +93,6 @@ class TahomaWebApi:
             logging.error("failed to generate token")
             raise exceptions.LoginFailure("failed to generate token")
         else:
-            # âœ… STAP 2 FIX: Handle unexpected status codes instead of silently returning
             logging.error(f"generate token: unexpected status code {response.status_code}")
             raise exceptions.TahomaException(f"Failed to generate token: unexpected status {response.status_code}")
 
@@ -116,14 +115,13 @@ class TahomaWebApi:
 
         if response.status_code == 200:
             logging.debug("succeeded to activate token: " + str(self.token))
-            return response.json()  # âœ… STAP 2 FIX: Return success case
+            return response.json()
         elif ((response.status_code == 401) or (response.status_code == 400)):
             self.__logged_in = False
             self.cookie = None
             logging.error("failed to activate token")
             raise exceptions.LoginFailure("failed to activate token")
         else:
-            # âœ… STAP 2 FIX: Handle unexpected status codes
             logging.error(f"activate token: unexpected status code {response.status_code}")
             raise exceptions.TahomaException(f"Failed to activate token: unexpected status {response.status_code}")
 

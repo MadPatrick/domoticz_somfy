@@ -581,7 +581,6 @@ class BasePlugin:
 
         except (exceptions.TooManyRetries,
                 exceptions.FailureWithErrorCode,
-                exceptions.FailureWithoutErrorCode,
                 Exception) as exp:
             Domoticz.Error(f"Failed to send command: {exp}")
             if not self.local:

@@ -292,8 +292,9 @@ class BasePlugin:
             self.tahoma.register_listener()
         except Exception as e:
             Domoticz.Error(f"Connection failed during startup: {e}")
-            self.enabled = False
-            return False
+            # self.enabled = False
+            # return True  # was False
+            self.connected = False
 
         # --- DEVICES OPHALEN ---
         try:
@@ -341,8 +342,8 @@ class BasePlugin:
                 return False
         except exceptions.TahomaException as e:
             Domoticz.Error("Failed to get devices: " + str(e))
-            self.enabled = False
-            return False
+            self.connected = False
+            filtered_devices = []
 
         self.create_devices(filtered_devices)
 
@@ -365,8 +366,13 @@ class BasePlugin:
         # --- STATUS UPDATEN ---
         self.update_devices_status(utils.filter_states(filtered_devices))
 
-        self._last_connected_time = datetime.datetime.now()
-        self.update_connection_device(True)
+        if filtered_devices:
+            self.connected = True
+            self._last_connected_time = datetime.datetime.now()
+            self.update_connection_device(True)
+        else:
+            self.connected = False
+            self.update_connection_device(False)
 
         return True
 
@@ -696,6 +702,13 @@ class BasePlugin:
                 #
                 if self.connected is False:
                     Domoticz.Log("Connection restored")
+
+                    if self.local:
+                        try:
+                            self.tahoma.register_listener()
+                            Domoticz.Log("Listener re-registered after connection restore")
+                        except Exception as e:
+                            Domoticz.Error(f"Failed to re-register listener: {e}")
 
                 self.connected = True
                 self._last_error = ""

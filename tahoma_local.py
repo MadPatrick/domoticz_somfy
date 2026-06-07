@@ -85,13 +85,17 @@ class TahomaWebApi:
             self.__token = response.json()['token']
             self.headers_with_token["Authorization"] = "Bearer " + str(self.__token)
             logging.debug("succeeded to generate token: " + str(self.token))
+            return response.json()  # âœ… STAP 2 FIX: Return on success
         elif ((response.status_code == 401) or (response.status_code == 400)):
             self.__logged_in = False
             self.cookie = None
             logging.debug("generate token: response = '" + str(response.json()) + "'")
             logging.error("failed to generate token")
             raise exceptions.LoginFailure("failed to generate token")
-        return response.json()
+        else:
+            # âœ… STAP 2 FIX: Handle unexpected status codes instead of silently returning
+            logging.error(f"generate token: unexpected status code {response.status_code}")
+            raise exceptions.TahomaException(f"Failed to generate token: unexpected status {response.status_code}")
 
     @property
     def token(self):
@@ -112,12 +116,16 @@ class TahomaWebApi:
 
         if response.status_code == 200:
             logging.debug("succeeded to activate token: " + str(self.token))
+            return response.json()  # âœ… STAP 2 FIX: Return success case
         elif ((response.status_code == 401) or (response.status_code == 400)):
             self.__logged_in = False
             self.cookie = None
             logging.error("failed to activate token")
             raise exceptions.LoginFailure("failed to activate token")
-        return response.json()
+        else:
+            # âœ… STAP 2 FIX: Handle unexpected status codes
+            logging.error(f"activate token: unexpected status code {response.status_code}")
+            raise exceptions.TahomaException(f"Failed to activate token: unexpected status {response.status_code}")
 
     def get_tokens(self, pin):
         url_act = "/enduser-mobile-web/enduserAPI/config/"+pin+"/local/tokens/devmode"
@@ -178,17 +186,42 @@ class SomfyBox(TahomaWebApi):
 
     def get_devices(self):
         logging.debug("start get devices")
+
         if self.token is None or self.token == "0":
             raise exceptions.TahomaException("No token has been provided")
-        response = requests.get(self.base_url_local + "/setup/devices", headers=self.headers_with_token, verify=False)
-        logging.debug("get device response: status '" + str(response.status_code) + "' response body: '"+str(response.json())+"'")
+
+        try:
+            response = requests.get(
+                self.base_url_local + "/setup/devices",
+                headers=self.headers_with_token,
+                verify=False,
+                timeout=10
+            )
+        except requests.exceptions.RequestException as exp:
+            raise exceptions.TahomaException(
+                f"Failed to get devices: {exp}"
+            )
+
+        logging.debug(
+            "get device response: status '" +
+            str(response.status_code) +
+            "' response body: '" +
+            str(response.json()) + "'"
+        )
+
         if response.status_code == 200:
-            logging.debug("succeeded to get local API devices: " + str(response.json()))
+            logging.debug(
+                "succeeded to get local API devices: " +
+                str(response.json())
+            )
         else:
             utils.handle_response(response, "get devices")
+
         filtered_list = utils.filter_devices(response.json())
         self.startup = False
+
         return filtered_list
+
 
     def get_device_state(self, device):
         if self.token is None or self.token == "0":

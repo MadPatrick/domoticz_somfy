@@ -292,8 +292,9 @@ class BasePlugin:
             self.tahoma.register_listener()
         except Exception as e:
             Domoticz.Error(f"Connection failed during startup: {e}")
-            self.enabled = False
-            return False
+            # self.enabled = False
+            # return True  # was False
+            self.connected = False
 
         # --- DEVICES OPHALEN ---
         try:
@@ -341,8 +342,8 @@ class BasePlugin:
                 return False
         except exceptions.TahomaException as e:
             Domoticz.Error("Failed to get devices: " + str(e))
-            self.enabled = False
-            return False
+            self.connected = False
+            filtered_devices = []
 
         self.create_devices(filtered_devices)
 
@@ -365,8 +366,13 @@ class BasePlugin:
         # --- STATUS UPDATEN ---
         self.update_devices_status(utils.filter_states(filtered_devices))
 
-        self._last_connected_time = datetime.datetime.now()
-        self.update_connection_device(True)
+        if filtered_devices:
+            self.connected = True
+            self._last_connected_time = datetime.datetime.now()
+            self.update_connection_device(True)
+        else:
+            self.connected = False
+            self.update_connection_device(False)
 
         return True
 
@@ -601,8 +607,6 @@ class BasePlugin:
 
         self.refresh_daily_data()
 
-        # Seed last-known values after first refresh so log_changes
-        # does not report spurious "changed from None" on first heartbeat
         if self._last_logged_sunrise is None:
             self._last_logged_sunrise = self.last_sunrise
         if self._last_logged_sunset is None:
@@ -612,13 +616,13 @@ class BasePlugin:
         now_minutes = now.hour * 60 + now.minute
 
         sunrise_str = self.last_sunrise or "06:00"
-        sunset_str  = self.last_sunset  or "22:00"
+        sunset_str = self.last_sunset or "22:00"
 
         sr_hour, sr_min = map(int, sunrise_str.split(":"))
         ss_hour, ss_min = map(int, sunset_str.split(":"))
 
         sunrise_minutes = sr_hour * 60 + sr_min
-        sunset_minutes  = ss_hour * 60 + ss_min
+        sunset_minutes = ss_hour * 60 + ss_min
 
         if sunrise_minutes - self.sunriseDelay <= now_minutes < sunset_minutes + self.sunsetDelay:
             standard_interval = self.dayInterval
@@ -628,49 +632,103 @@ class BasePlugin:
             status_label = "NIGHT-MODE"
 
         if self._last_mode != status_label:
-            Domoticz.Status(f"Mode switched to {status_label}. Polling interval is now {standard_interval}s")
-            logging.info(f"Mode switched to {status_label}. Polling interval is now {standard_interval}s")
+            Domoticz.Status(
+                f"Mode switched to {status_label}. Polling interval is now {standard_interval}s"
+            )
+            logging.info(
+                f"Mode switched to {status_label}. Polling interval is now {standard_interval}s"
+            )
             self._last_mode = status_label
 
-        # Seed last_interval on first heartbeat so log_changes won't report a spurious change
         if self.last_interval is None:
             self.last_interval = standard_interval
 
-        self.log_changes(standard_interval, self.last_sunrise, self.last_sunset, status_label)
+        self.log_changes(
+            standard_interval,
+            self.last_sunrise,
+            self.last_sunset,
+            status_label
+        )
 
-        # Temporary fast polling after command
+        #
+        # Fast polling after command
+        #
         if time.time() < self.temp_interval_end:
             interval = self.temp_delay
+
             if not self._temp_log_active:
                 remaining = math.ceil(self.temp_interval_end - time.time())
-                Domoticz.Status(f"Action detected! Fast polling ({self.temp_delay}s) active for {remaining}s")
+                Domoticz.Status(
+                    f"Action detected! Fast polling ({self.temp_delay}s) active for {remaining}s"
+                )
                 self._temp_log_active = True
         else:
             interval = standard_interval
+
             if self._temp_log_active:
-                Domoticz.Status(f"Fast polling ended. Returning to standard interval ({interval}s)")
+                Domoticz.Status(
+                    f"Fast polling ended. Returning to standard interval ({interval}s)"
+                )
                 self._temp_log_active = False
 
+        #
+        # Polling cycle
+        #
         if self.runCounter <= 0 or self.heartbeat:
 
-            try:
-                if self.local:
-                    filtered_devices = self.tahoma.get_devices()
-                else:
-                    if not self.tahoma.logged_in:
-                        self.tahoma.tahoma_login(str(Parameters["Username"]), str(Parameters["Password"]))
-                    filtered_devices = None
+            filtered_devices = None
 
+            try:
+
+                #
+                # REAL connectivity test
+                #
+                if self.local:
+
+                    filtered_devices = self.tahoma.get_devices()
+
+                else:
+
+                    if not self.tahoma.logged_in:
+                        self.tahoma.tahoma_login(
+                            str(Parameters["Username"]),
+                            str(Parameters["Password"])
+                        )
+
+                    filtered_devices = self.tahoma.get_devices()
+
+                #
+                # Successful communication
+                #
                 if self.connected is False:
                     Domoticz.Log("Connection restored")
+
+                    if self.local:
+                        try:
+                            self.tahoma.register_listener()
+                            Domoticz.Log("Listener re-registered after connection restore")
+                        except Exception as e:
+                            Domoticz.Error(f"Failed to re-register listener: {e}")
+
                 self.connected = True
                 self._last_error = ""
                 self._last_connected_time = datetime.datetime.now()
                 self._login_fail_count = 0
+
+                #
+                # Update device states
+                #
+                if filtered_devices is not None:
+                    self.update_devices_status(
+                        utils.filter_states(filtered_devices)
+                    )
+
                 self.update_connection_device(True)
 
             except Exception as e:
+
                 msg = str(e).lower()
+
                 if "no route to host" in msg:
                     short = "No route to host"
                 elif "connection refused" in msg:
@@ -678,31 +736,26 @@ class BasePlugin:
                 elif "timed out" in msg:
                     short = "Connection timed out"
                 else:
-                    short = "Connection failed"
+                    short = str(e)
+
+                if self.connected is True or self.connected is None:
+                    Domoticz.Error(f"Communication lost: {short}")
+
+                self.connected = False
+                self._last_error = short
+
+                self.update_connection_device(False)
 
                 self._login_fail_count += 1
-                if self.connected is True or self.connected is None:
-                    Domoticz.Error(f"{short} (box not reachable)")
-                    self._last_error = short
-                    self.update_connection_device(False)
+
                 if self._login_fail_count >= self._max_login_failures:
                     self._do_reconnect()
-                self.connected = False
-                filtered_devices = None
-
-            if self.connected:
-                try:
-                    if not self.local:
-                        filtered_devices = self.tahoma.get_devices()
-                    if filtered_devices is not None:
-                        self.update_devices_status(utils.filter_states(filtered_devices))
-                except Exception:
-                    pass
 
             self.runCounter = interval
             self.heartbeat = False
 
         return True
+
 
     def update_devices_status(self, Updated_devices):
         Domoticz.Debug("updating device status self.tahoma.startup = "+str(self.tahoma.startup)+" on num datasets: "+str(len(Updated_devices)))

@@ -30,10 +30,10 @@ Supported devices:
 When upgrading to version 3.x, it is required to first remove all devices attached to the Somfy hardware. This has to do with the upgrade to the Domoticz Extended Framework, which enabled the slats/orientation control for the blinds.
  The plugin will not upgrade when there are still devices attached to the Somfy hardware.
 ### version 4.x
-As of version 4.x the plugin supports local access to the Somfy box for both Tahoma and Connexoon. Addtional installation steps mentioned below.
+As of version 4.x the plugin supports local access to the Somfy box for both Tahoma and Connexoon. Additional installation steps mentioned below.
 
 ### Version 5.x
-The latest plugin version **5.3.1** introduces:
+The latest plugin version **5.3.2** introduces:
 
 - **Extended device support**  
   - Full venetian blinds: separate units for up/down and orientation.  
@@ -82,22 +82,14 @@ Before installation, register your Somfy products and add them to your Tahoma or
 
 ### Prerequisites
 1. Python 3.7+ and Domoticz 2022.1+ (required for Extended Plugin Framework)  
-2. Install required libraries:
+2. Follow the Domoticz guide on [Using Python Plugins](https://www.domoticz.com/wiki/Using_Python_plugins)  
+3. Install required libraries:
 
 ```
 sudo apt-get update
 sudo apt-get install python3 libpython3-dev libpython3.7-dev
 sudo apt-get install python3-requests
 ```
-
-### 📦 Install the plugin
-1. Go in your Domoticz directory using a command line and open the plugins directory:
- ```cd domoticz/plugins```
-2. clone the plugin:
- ```git clone https://github.com/MadPatrick/domoticz_somfy Somfy```
-3. Restart Domoticz:
- ```sudo systemctl restart domoticz```
-
 ### 🖧 Setup Local API Access (Recommended)
 1. First you need to enable developer mode on your box:
 - connect to the [Somfy website](https://www.somfy.nl/inloggen) and navigate to the **My Account menu.**
@@ -121,6 +113,15 @@ You also need to link your Somfy Box PIN to the Somfy Box IP address in your net
 ```
 192.168.1.1 is the IP of your Somfy box<br/>
 1234-1234-1234 is the PIN number of your Somfy box and don't forget to add .local to the PIN number
+
+
+### 📦 Install the plugin
+1. Go in your Domoticz directory using a command line and open the plugins directory:
+ ```cd domoticz/plugins```
+2. clone the plugin:
+ ```git clone https://github.com/MadPatrick/domoticz_somfy```
+3. Restart Domoticz:
+ ```sudo systemctl restart domoticz```
 
 ### ⚙️ Configure the Plugin
 In the Domoticz UI, navigate to the Hardware page. 
@@ -204,9 +205,9 @@ If the slider positions do not match your preferences (Open = 0%, Close = 100%),
 ![Domoticz - Devices_613_LightEdit](https://user-images.githubusercontent.com/81873830/206902008-46de4127-313e-4c0a-ba2a-3c729762734a.png)
 
 ## 🔄 Update the plugin:
-When there an update of the plugin you can easlily do an update by:
+When there is an update of the plugin you can easily do an update by:
 ```
-cd domoticz/plugins/Somfy
+cd domoticz/plugins/domoticz_somfy
 git pull
 ```
 And then either restart Domoticz or update the plugin on the Hardware page.

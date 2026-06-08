@@ -8,7 +8,8 @@ stateSet = {
     "core:LuminanceState",
     "core:DeploymentState",
     "core:OpenClosedPartialState",
-    "core:OpenClosedPedestrianState"
+    "core:OpenClosedPedestrianState",
+    "core:SlateOrientationState"
 }
 
 # Supported uiClasses for io:// and rts:// devices
@@ -153,6 +154,21 @@ def parse_gateway_info(gateways):
     }
 
 
+def response_json(response, action):
+    """Return response JSON or raise a readable plugin exception."""
+    try:
+        return response.json()
+    except ValueError as exc:
+        body = getattr(response, "text", "")
+        snippet = body.replace("\r", " ").replace("\n", " ")[:200]
+        logging.error(
+            "invalid JSON during " + action +
+            ", status: " + str(getattr(response, "status_code", "unknown")) +
+            ", body: " + snippet
+        )
+        raise exceptions.TahomaException("Invalid JSON response during " + action) from exc
+
+
 def handle_response(response, action):
     """Raise an appropriate exception for non-2xx HTTP responses."""
     if 200 <= response.status_code < 300:
@@ -175,4 +191,3 @@ def handle_response(response, action):
     else:
         logging.error("status code " + str(response.status_code))
         raise exceptions.TahomaException("failed request during " + action + ": " + str(response.status_code))
-

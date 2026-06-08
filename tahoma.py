@@ -68,16 +68,17 @@ class Tahoma:
             logging.error("Failed to contact server: " + str(exp))
             return False
 
-        logging.debug(
-            "get login status response: status '" + str(response.status_code) +
-            "' response body: '" + str(response.json()) + "'"
-        )
         if response.status_code != 200:
             logging.error("get_login: error during get devices, status: " + str(response.status_code))
             Domoticz.Error("get_login: error during get devices, status: " + str(response.status_code))
             return False
+        Data = utils.response_json(response, "get login status")
+        logging.debug(
+            "get login status response: status '" + str(response.status_code) +
+            "' response body: '" + str(Data) + "'"
+        )
 
-        return response.json()['authenticated']
+        return Data['authenticated']
 
     def tahoma_login(self, username, password):
         url = self.base_url + self.login_url
@@ -97,7 +98,7 @@ class Tahoma:
             logging.error("Login request failed: " + str(exp))
             raise exceptions.LoginFailure("Network error during login: " + str(exp))
 
-        Data = response.json()
+        Data = utils.response_json(response, "login")
         logging.debug(
             "Login response: status_code: '" + str(response.status_code) +
             "' response body: '" + str(Data) + "'"
@@ -112,9 +113,11 @@ class Tahoma:
             )
             cookie_tmp = response.headers["Set-Cookie"]
             self.cookie = cookie_tmp[:cookie_tmp.index(';')]
+            safe_headers = dict(response.headers)
+            if "Set-Cookie" in safe_headers:
+                safe_headers["Set-Cookie"] = "***"
             logging.debug(
-                "login: cookies: '" + str(response.cookies) +
-                "', headers: '" + str(response.headers) + "'"
+                "login: cookies received, headers: '" + str(safe_headers) + "'"
             )
 
         elif response.status_code in (400, 401):
@@ -160,15 +163,16 @@ class Tahoma:
                     "get device response: url '" + str(response.url) +
                     "' response headers: '" + str(response.headers) + "'"
                 )
-                logging.debug(
-                    "get device response: status '" + str(response.status_code) +
-                    "' response body: '" + str(response.json()) + "'"
-                )
                 if response.status_code != 200:
                     logging.error("get_devices: error during get devices, status: " + str(response.status_code))
                     Domoticz.Error("get_devices: error during get devices, status: " + str(response.status_code))
-                    return
+                    self.handle_response(response, "get devices")
                 else:
+                    Data = utils.response_json(response, "get devices")
+                    logging.debug(
+                        "get device response: status '" + str(response.status_code) +
+                        "' response body: '" + str(Data) + "'"
+                    )
                     break
             except requests.exceptions.RequestException as exp:
                 logging.error("get_devices RequestException: " + str(exp))
@@ -176,7 +180,7 @@ class Tahoma:
         else:
             raise exceptions.TooManyRetries
 
-        filtered_list = utils.filter_devices(response.json())
+        filtered_list = utils.filter_devices(Data)
         self.startup = False
         return filtered_list
 
@@ -213,8 +217,12 @@ class Tahoma:
                         ", " + str(response.text)
                     )
                     self.__logged_in = False
-                    if response.status_code in (400, 401) and "error" in response.json():
-                        error_msg = response.json()["error"]
+                    try:
+                        Data = utils.response_json(response, "get events")
+                    except exceptions.TahomaException:
+                        Data = {}
+                    if response.status_code in (400, 401) and "error" in Data:
+                        error_msg = Data["error"]
                         if "No registered event listener" in error_msg or "authenticated" in error_msg:
                             self.listener.valid = False
                             logging.error("fetch events failed due to no valid listener registered")
@@ -222,7 +230,7 @@ class Tahoma:
                     return []
 
                 elif response.status_code == 200 and self.logged_in:
-                    strData = response.json()
+                    strData = utils.response_json(response, "get events")
 
                     if "DeviceStateChangedEvent" not in response.text:
                         logging.debug("get_events: no DeviceStateChangedEvent found in response: " + str(strData))
@@ -274,7 +282,7 @@ class Tahoma:
             timeout=self.timeout
         )
         if response.status_code == 200:
-            logging.debug("succeeded to get listener ID: " + str(response.json()))
+            logging.debug("succeeded to get listener ID: " + str(utils.response_json(response, "register listener")))
         else:
             self.handle_response(response, "register listener")
         self.refresh = False
@@ -291,7 +299,9 @@ class Tahoma:
             "Cookie": self.cookie
         }
         logging.info("Sending command to tahoma api")
-        logging.debug("onCommand: headers: '" + str(Headers) + "', data '" + str(json_data) + "'")
+        debug_headers = dict(Headers)
+        debug_headers["Cookie"] = "***"
+        logging.debug("onCommand: headers: '" + str(debug_headers) + "', data '" + str(json_data) + "'")
 
         try:
             response = requests.post(
@@ -304,18 +314,19 @@ class Tahoma:
             logging.error("Send command returns RequestException: " + str(exp))
             return ""
 
-        logging.debug(
-            "command response: status '" + str(response.status_code) +
-            "' response body: '" + str(response.json()) + "'"
-        )
-        if response.status_code == 200:
-            logging.debug("succeeded to post command: " + str(response.json()))
-            self.execId = response.json()['execId']
-        else:
+        if response.status_code != 200:
             self.__logged_in = False
             self.handle_response(response, "send command")
 
-        return response.json()
+        Data = utils.response_json(response, "send command")
+        logging.debug(
+            "command response: status '" + str(response.status_code) +
+            "' response body: '" + str(Data) + "'"
+        )
+        logging.debug("succeeded to post command: " + str(Data))
+        self.execId = Data['execId']
+
+        return Data
 
     def handle_response(self, response, action):
         """Handle faulty responses by raising appropriate exceptions."""

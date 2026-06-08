@@ -3,6 +3,14 @@ import exceptions
 import logging
 import datetime
 import json
+import utils
+
+def _masked_headers(headers):
+    masked = dict(headers)
+    for key in list(masked):
+        if key.lower() in ("authorization", "cookie"):
+            masked[key] = "***"
+    return masked
 
 class Listener:
     def __init__(self, Minutes=4):
@@ -37,12 +45,13 @@ class Listener:
 
     def register_listener(self, url, headers, verify=False, timeout=10):
         logging.debug("start register listener")
-        logging.debug("register request: self.headers_with_token: '" + json.dumps(headers) + "'")
+        logging.debug("register request: self.headers_with_token: '" + json.dumps(_masked_headers(headers)) + "'")
         response = requests.post(url, headers=headers, verify=verify, timeout=timeout)
         logging.debug("register response: status '" + str(response.status_code) + "' response body: '"+str(response)+"'")
         if response.status_code == 200:
-            logging.debug("succeeded to get listener ID: " + str(response.json()))
-            self.__listenerId = response.json()['id']
+            data = utils.response_json(response, "register listener")
+            logging.debug("succeeded to get listener ID: " + str(data))
+            self.__listenerId = data['id']
             self.__listener_expiry = datetime.datetime.now() + self.__expiry_time
             self.__valid = True
         else:

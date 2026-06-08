@@ -44,7 +44,7 @@
         <br/>Local PIN: connect directly to the box using the Gateway PIN (requires DNS or /etc/hosts entry for &lt;PIN&gt;.local)
         <br/>Local IP: connect directly to the box using an IP address (no DNS required)
         <br/>
-        <br/>Somfy is depreciating the Web access, so it is better to use the local API
+        <br/>Somfy is deprecating Web access, so it is better to use the local API
         <br/>Preferable use the Local IP mode</td>
     </tr>
     <tr>
@@ -77,7 +77,7 @@
         <param field="Username" label="Username" width="200px" required="true" default=""/>
         <param field="Password" label="Password" width="200px" required="true" default="" password="true"/>
         <param field="Mode4" label="Connection" width="150px">
-            <description><br/>Somfy is depreciating the Web access, so it is better to use the local API</description>
+            <description><br/>Somfy is deprecating Web access, so it is better to use the local API</description>
             <options>
                 <option label="Web" value="Web"/>
                 <option label="Local PIN" value="Local"/>
@@ -237,7 +237,7 @@ class BasePlugin:
             Domoticz.Log("Web connection configured (via Somfy cloud)")
 
         try:
-            self.tahoma.tahoma_login(str(Parameters.get("Username")), str(Parameters.get("Password")))
+            self._ensure_web_login()
         except Exception as exp:
             Domoticz.Error("Failed to login: " + str(exp))
             return False
@@ -257,8 +257,8 @@ class BasePlugin:
 
             if self.local_ip_mode:
                 # In Local IP mode the PIN (Address field) is still available for token generation via web API.
-                if confToken == '0' or Parameters["Mode1"].lower() == "true":
-                    if not pin or pin == "1234-1234-1234":
+                if confToken == '0' or self._reset_token_requested():
+                    if not self._valid_pin(pin):
                         Domoticz.Error(
                             "Local IP mode: no stored token and no valid Gateway PIN in Address field. "
                             "Please enter the Gateway PIN in the Address field so a token can be generated."
@@ -266,22 +266,23 @@ class BasePlugin:
                         self.enabled = False
                         return False
                     logging.debug("no token found (LocalIP mode), generating a new one using PIN")
-                    self.tahoma.generate_token(pin)
-                    self.tahoma.activate_token(pin, self.tahoma.token)
-                    setConfigItem('token', self.tahoma.token)
-                    setConfigItem('token_created', datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
+                    self._refresh_local_token(pin)
                     Domoticz.Log("Token created (LocalIP mode)")
                 else:
                     logging.debug("found token in configuration (LocalIP mode): " + str(confToken))
                     self.tahoma.token = confToken
                     Domoticz.Log("Token present (LocalIP mode), loaded from configuration")
             else:
-                if confToken == '0' or Parameters["Mode1"].lower() == "true":
+                if confToken == '0' or self._reset_token_requested():
+                    if not self._valid_pin(pin):
+                        Domoticz.Error(
+                            "Local PIN mode: no stored token and no valid Gateway PIN in Address field. "
+                            "Please enter the Gateway PIN in the Address field so a token can be generated."
+                        )
+                        self.enabled = False
+                        return False
                     logging.debug("no token found, generate a new one")
-                    self.tahoma.generate_token(pin)
-                    self.tahoma.activate_token(pin, self.tahoma.token)
-                    setConfigItem('token', self.tahoma.token)
-                    setConfigItem('token_created', datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
+                    self._refresh_local_token(pin)
                     Domoticz.Log("Token created")
                 else:
                     logging.debug("found token in configuration: " + str(confToken))
@@ -311,10 +312,7 @@ class BasePlugin:
                         return False
                     Domoticz.Log("Local IP mode: stored token rejected (401), regenerating token using PIN...")
                     try:
-                        self.tahoma.generate_token(pin)
-                        self.tahoma.activate_token(pin, self.tahoma.token)
-                        setConfigItem('token', self.tahoma.token)
-                        setConfigItem('token_created', datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
+                        self._refresh_local_token(pin)
                         Domoticz.Log("Token refreshed (LocalIP mode)")
                         self.tahoma.register_listener()
                         filtered_devices = self.tahoma.get_devices()
@@ -325,10 +323,7 @@ class BasePlugin:
                 else:
                     Domoticz.Log("Stored token rejected (401), regenerating token...")
                     try:
-                        self.tahoma.generate_token(pin)
-                        self.tahoma.activate_token(pin, self.tahoma.token)
-                        setConfigItem('token', self.tahoma.token)
-                        setConfigItem('token_created', datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
+                        self._refresh_local_token(pin)
                         Domoticz.Log("Token refreshed")
                         self.tahoma.register_listener()
                         filtered_devices = self.tahoma.get_devices()
@@ -376,15 +371,52 @@ class BasePlugin:
 
         return True
 
+    def _valid_pin(self, pin):
+        return bool(pin and pin != "1234-1234-1234")
+
+    def _reset_token_requested(self):
+        return str(Parameters.get("Mode1", "false")).lower() == "true"
+
+    def _ensure_web_login(self):
+        if not self.tahoma.logged_in:
+            self.tahoma.tahoma_login(
+                str(Parameters.get("Username", "")),
+                str(Parameters.get("Password", ""))
+            )
+        return True
+
+    def _refresh_local_token(self, pin):
+        if not self._valid_pin(pin):
+            raise exceptions.TahomaException("No valid Gateway PIN available for token generation")
+        self._ensure_web_login()
+        self.tahoma.generate_token(pin)
+        self.tahoma.activate_token(pin, self.tahoma.token)
+        setConfigItem('token', self.tahoma.token)
+        setConfigItem('token_created', datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
+        return self.tahoma.token
+
     def _do_reconnect(self):
         Domoticz.Log("Trying to reconnect/re-login to Tahoma...")
         try:
             if self.local:
-                self.tahoma.tahoma_login(str(Parameters["Mode1"]), str(Parameters["Mode2"]), str(Parameters["Mode3"]))
+                pin = Parameters.get("Address", "").strip()
+                confToken = getConfigItem('token', '0')
+                if confToken not in (None, "", "0") and not self._reset_token_requested():
+                    self.tahoma.token = confToken
+                    Domoticz.Log("Reconnect using stored local API token")
+                else:
+                    self._refresh_local_token(pin)
+                    Domoticz.Log("Reconnect created a fresh local API token")
+                self.tahoma.register_listener()
+                self.tahoma.get_devices()
             else:
-                self.tahoma.tahoma_login(str(Parameters["Username"]), str(Parameters["Password"]))
+                self._ensure_web_login()
+                self.tahoma.register_listener()
             Domoticz.Log("Reconnect successful.")
             self._login_fail_count = 0
+            self.connected = True
+            self._last_error = ""
+            self._last_connected_time = datetime.datetime.now()
         except Exception as e:
             Domoticz.Error(f"Reconnect failed, will try again next heartbeat: {e}")
 
@@ -395,14 +427,18 @@ class BasePlugin:
 
     def onConnect(self, Connection, Status, Description):
         Domoticz.Debug("onConnect: Connection: '"+str(Connection)+"', Status: '"+str(Status)+"', Description: '"+str(Description)+"' self.tahoma.logged_in: '"+str(self.tahoma.logged_in)+"'")
-        if (Status == 0 and not self.tahoma.logged_in):
-            self.tahoma.tahoma_login(str(Parameters["Username"]), str(Parameters["Password"]))
-        elif (self.tahoma.logged_in and (not self.command)):
+        if (Status == 0 and not self.local and not self.tahoma.logged_in):
+            self._ensure_web_login()
+        elif ((self.local or self.tahoma.logged_in) and (not self.command)):
             event_list = self.tahoma.get_events()
             self.update_devices_status(event_list)
         elif (self.command):
-            event_list = self.tahoma.tahoma_command(self.command_data)
-            self.update_devices_status(event_list)
+            self.tahoma.send_command(self.command_data)
+            try:
+                event_list = self.tahoma.get_events()
+                self.update_devices_status(event_list)
+            except Exception as e:
+                Domoticz.Debug("Could not fetch events after command: " + str(e))
             self.command = False
             self.heartbeat = False
             self.actions_serialized = []
@@ -541,11 +577,11 @@ class BasePlugin:
         else:
             self.command_data = json.dumps(data, indent=None, sort_keys=True)
 
-        if not self.tahoma.logged_in:
+        if not self.local and not self.tahoma.logged_in:
             Domoticz.Log("Not logged in, trying to login")
             self.command = True
             try:
-                self.tahoma.tahoma_login(str(Parameters["Username"]), str(Parameters["Password"]))
+                self._ensure_web_login()
             except Exception as e:
                 self._login_fail_count += 1
                 Domoticz.Error(f"Login mislukt, commando wordt afgebroken: {e}")
@@ -785,6 +821,9 @@ class BasePlugin:
                 lumlevel = 0
 
                 for state in states:
+                    level = None
+                    status_num = 0
+
                     if state["name"] in ("core:ClosureState", "core:DeploymentState"):
                         raw_level = max(0, min(int(state["value"]), 100))
                         if deviceClassTrig == "Awning":
@@ -1100,12 +1139,12 @@ def DumpConfigToLog():
     Domoticz.Debug("Parameters count: " + str(len(Parameters)))
     for x in Parameters:
         if Parameters[x] != "":
-            Domoticz.Debug("Parameter: '" + x + "':'" + str(Parameters[x]) + "'")
+            Domoticz.Debug("Parameter: '" + x + "':'" + str(_mask_secret(x, Parameters[x])) + "'")
     Configurations = Domoticz.Configuration()
     Domoticz.Debug("Configuration count: " + str(len(Configurations)))
     for x in Configurations:
         if Configurations[x] != "":
-            Domoticz.Debug("Configuration '" + x + "':'" + str(Configurations[x]) + "'")
+            Domoticz.Debug("Configuration '" + x + "':'" + str(_mask_secret(x, Configurations[x])) + "'")
     Domoticz.Debug("Device count: " + str(len(Devices)))
     for x in Devices:
         Domoticz.Debug("Device:           " + str(x) + " - " + str(Devices[x]))
@@ -1115,7 +1154,13 @@ def DumpConfigToLog():
 # Configuration Helpers
 #############
 
-def getConfigItem(Key=None, Default={}):
+def _mask_secret(Key, Value):
+    key = str(Key).lower()
+    if any(secret in key for secret in ("password", "token", "cookie", "authorization")):
+        return "***"
+    return Value
+
+def getConfigItem(Key=None, Default=None):
     Value = Default
     try:
         Config = Domoticz.Configuration()
@@ -1150,7 +1195,7 @@ def UpdateDevice(Device, Unit, nValue, sValue, AlwaysUpdate=False):
         logging.debug("Updating device " + Devices[Device].Units[Unit].Name +
                       " with current sValue '" + Devices[Device].Units[Unit].sValue +
                       "' to '" + sValue + "'")
-        if (Devices[Device].Units[Unit].nValue != nValue) or (Devices[Device].Units[Unit].sValue != sValue):
+        if AlwaysUpdate or (Devices[Device].Units[Unit].nValue != nValue) or (Devices[Device].Units[Unit].sValue != sValue):
             try:
                 Devices[Device].Units[Unit].nValue = nValue
                 Devices[Device].Units[Unit].sValue = sValue

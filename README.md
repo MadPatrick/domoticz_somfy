@@ -1,7 +1,7 @@
 # 🏠 Somfy Tahoma/Connexoon Plugin for Domoticz
 ![Status](https://img.shields.io/badge/Status-Stable-brightgreen)
-![Domoticz](https://img.shields.io/badge/Domoticz-2022%2B-blue)
-![Python](https://img.shields.io/badge/Python-3.7+-yellow)
+![Domoticz](https://img.shields.io/badge/Domoticz-Python%20Plugin%20Framework-blue)
+![Python](https://img.shields.io/badge/Python-3.x-yellow)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey)
 
 Original script by [Nonolk](https://github.com/nonolk/domoticz_tahoma_blind).  
@@ -81,15 +81,24 @@ Before installation, register your Somfy products and add them to your Tahoma or
 ## 💻 Installation
 
 ### Prerequisites
-1. Python 3.7+ and Domoticz 2022.1+ (required for Extended Plugin Framework)  
-2. Follow the Domoticz guide on [Using Python Plugins](https://www.domoticz.com/wiki/Using_Python_plugins)  
-3. Install required libraries:
+1. A recent Domoticz installation with Python plugin support / Extended Plugin Framework enabled.  
+2. Python 3 with the matching Python development package for your system.  
+3. Follow the Domoticz guide on [Using Python Plugins](https://www.domoticz.com/wiki/Using_Python_plugins)  
+4. Install required libraries:
 
 ```
 sudo apt-get update
-sudo apt-get install python3 libpython3-dev libpython3.7-dev
-sudo apt-get install python3-requests
+sudo apt-get install python3 python3-dev python3-requests python3-urllib3
 ```
+
+Or install the Python dependencies with pip:
+
+```
+python3 -m pip install -r requirements.txt
+```
+
+`DomoticzEx` is provided by Domoticz and is not a pip dependency.
+
 ### 🖧 Setup Local API Access (Recommended)
 1. First you need to enable developer mode on your box:
 - connect to the [Somfy website](https://www.somfy.nl/inloggen) and navigate to the **My Account menu.**

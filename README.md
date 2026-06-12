@@ -128,7 +128,7 @@ You also need to link your Somfy Box PIN to the Somfy Box IP address in your net
 1. Go in your Domoticz directory using a command line and open the plugins directory:
  ```cd domoticz/plugins```
 2. clone the plugin:
- ```git clone https://github.com/MadPatrick/domoticz_somfy```
+ ```git clone https://github.com/MadPatrick/domoticz_somfy Somfy```
 3. Restart Domoticz:
  ```sudo systemctl restart domoticz```
 

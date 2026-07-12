@@ -121,6 +121,37 @@ class BasePlugin:
         self._login_fail_count = 0
         self._max_login_failures = 3  # number of consecutive failures before a reconnect is attempted
 
+    def _read_int_parameter(self, field, default, minimum=None, maximum=None):
+        raw = Parameters.get(field, "")
+        if raw is None or str(raw).strip() == "":
+            return default
+        try:
+            value = int(raw)
+            if minimum is not None and value < minimum:
+                raise ValueError
+            if maximum is not None and value > maximum:
+                raise ValueError
+            return value
+        except (TypeError, ValueError):
+            Domoticz.Error(
+                f"Invalid {field} value '{raw}'. Using default {default}."
+            )
+            return default
+
+    def _read_config_int(self, key, raw, default, minimum=None, maximum=None):
+        try:
+            value = int(raw)
+            if minimum is not None and value < minimum:
+                raise ValueError
+            if maximum is not None and value > maximum:
+                raise ValueError
+            return value
+        except (TypeError, ValueError):
+            Domoticz.Error(
+                f"Invalid {key} value in config.txt: '{raw}'. Using default {default}."
+            )
+            return default
+
     def onStart(self):
         """
         Plugin initialization.
@@ -160,7 +191,7 @@ class BasePlugin:
         # --- Connect to Tahoma/Connexoon box ---
         pin     = Parameters.get("Address", "").strip()
         mode3   = Parameters.get("Mode3", "").strip()
-        port    = int(Parameters.get("Port", 8443))
+        port    = self._read_int_parameter("Port", 8443, 1, 65535)
         mode4   = Parameters.get("Mode4", "LocalIP")
 
         if mode4 == "LocalIP":
@@ -976,39 +1007,23 @@ class BasePlugin:
                     if key == "DOMOTICZ_HOST":
                         self.domoticz_host = val
                     elif key == "DOMOTICZ_PORT":
-                        self.domoticz_port = val
+                        self.domoticz_port = str(
+                            self._read_config_int(key, val, 8080, 1, 65535)
+                        )
                     elif key == "DAY_INTERVAL":
-                        try:
-                            self.dayInterval = int(val)
-                        except ValueError:
-                            Domoticz.Error(f"Invalid DAY_INTERVAL value in config.txt: {val}")
+                        self.dayInterval = self._read_config_int(key, val, 30, 1)
                     elif key == "NIGHT_INTERVAL":
-                        try:
-                            self.nightInterval = int(val)
-                        except ValueError:
-                            Domoticz.Error(f"Invalid NIGHT_INTERVAL value in config.txt: {val}")
+                        self.nightInterval = self._read_config_int(key, val, 900, 1)
                     elif key == "TEMP_DELAY":
-                        try:
-                            self.temp_delay = int(val)
-                        except ValueError:
-                            Domoticz.Error(f"Invalid TEMP_DELAY value in config.txt: {val}")
+                        self.temp_delay = self._read_config_int(key, val, 10, 0)
                     elif key == "TEMP_TIME":
-                        try:
-                            self.temp_time = int(val)
-                        except ValueError:
-                            Domoticz.Error(f"Invalid TEMP_TIME value in config.txt: {val}")
+                        self.temp_time = self._read_config_int(key, val, 60, 1)
                     elif key == "SUN_REFRESH_TIME":
                         self.sun_refresh_time = val  # expected format "HH:MM"
                     elif key == "SUNRISE_DELAY":
-                        try:
-                            self.sunriseDelay = int(val)
-                        except ValueError:
-                            Domoticz.Error(f"Invalid SUNRISE_DELAY value in config.txt: {val}")
+                        self.sunriseDelay = self._read_config_int(key, val, 30)
                     elif key == "SUNSET_DELAY":
-                        try:
-                            self.sunsetDelay = int(val)
-                        except ValueError:
-                            Domoticz.Error(f"Invalid SUNSET_DELAY value in config.txt: {val}")
+                        self.sunsetDelay = self._read_config_int(key, val, 60)
 
             if log:
                 Domoticz.Log("Config.txt loaded.")

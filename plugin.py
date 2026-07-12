@@ -9,75 +9,27 @@
 """
 <plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.3.2" externallink="https://github.com/MadPatrick/somfy">
     <description>
-        <br/><h2>Somfy Tahoma/Connexoon plugin</h2><br/>
-        Version: 5.3.2
-        <br/>This plugin connects to the Tahoma or Connexoon box either via the web API or via local access.
-        <br/>Various devices are supported (RollerShutter, LightSensor, Screen, Awning, Window, VenetianBlind, etc.).
-        <br/>For new devices, please raise a ticket at the Github link above.
-        <h2><br/>Configuration</h2><br/>
-        The configuration contains the following sections:
-        <ol>
-            <li>General: enter here your credentials and select the connection method</li>
-            <li>Local: when connection method local is selected, fill this section as well</li>
-            <li>Debug: allows to set log level</li>
-        </ol>
-        <br/><font color="yellow">Please put in the additional parameters in the config.txt file in the plugin folder</font>
-        <br/>
-        <br/>
-<table border="1" cellpadding="4" cellspacing="0">
-    <tr>
-        <th style="width:120px">Parameter</th>
-        <th style="width:350px">Description</th>
-    </tr>
-    <tr>
-        <td>Username</td>
-        <td>Enter your Somfy login name </td>
-    </tr>
-    <tr>
-        <td>Password</td>
-        <td>Enter your Somfy Password</td>
-    </tr>
-    <tr>
-        <td>Connection</td>
-        <td>Choose how to interact with the Somfy/Tahoma/Connexoon box:
-        <br/>Web: via Somfy web server (requires continuous internet access)
-        <br/>Local PIN: connect directly to the box using the Gateway PIN (requires DNS or /etc/hosts entry for &lt;PIN&gt;.local)
-        <br/>Local IP: connect directly to the box using an IP address (no DNS required)
-        <br/>
-        <br/>Somfy is deprecating Web access, so it is better to use the local API
-        <br/>Preferable use the Local IP mode</td>
-    </tr>
-    <tr>
-        <td>Address</td>
-        <td>Gateway PIN of the Tahoma box, e.g. 1234-1234-1234.
-        <br/>
-        <br/>Used for all connection modes to generate and activate the local API token via the Somfy web API.</td>
-    </tr>
-    <tr>
-        <td>Local IP Address</td>
-        <td>Only used in Local IP mode. Enter the IP address of the Tahoma box, e.g. 192.168.1.100
-        <br/>Leave empty when using Web or Local PIN mode.</td>
-    </tr>
-    <tr>
-        <td>Port</td>
-        <td>Portnumber of the Tahoma box (8443)</td>
-    </tr>
-    <tr>
-        <td>Reset token</td>
-        <td>Set to True to request a new token. Can be used when you get access denied</td>
-    </tr>
-    <tr>
-        <td>Debug logging</td>
-        <td>Set to TRUE to enable debug logging for troubleshooting</td>
-    </tr>
-    </table>
-    <br/>
-</description>
+        <h2>Somfy TaHoma / Connexoon</h2>
+        <p><strong>Version:</strong> 5.3.2</p>
+        <p>Connects Domoticz to a Somfy TaHoma or Connexoon gateway through the local API or legacy web API.</p>
+        <h3>Features</h3>
+        <ul>
+            <li>Controls roller shutters, screens, awnings, pergolas, windows, garage doors and gates.</li>
+            <li>Supports Venetian blind position and slat orientation controls.</li>
+            <li>Supports luminance sensors and RTS devices.</li>
+            <li>Provides local IP, local PIN and web connection modes with automatic token management.</li>
+            <li>Creates a connection-status device and automatically reconnects after communication failures.</li>
+            <li>Uses separate day, night and temporary polling intervals with sunrise and sunset awareness.</li>
+        </ul>
+        <h3>Configuration</h3>
+        <p>Local IP mode is recommended. Enable Developer Mode on the gateway, enter the gateway PIN and local IP address, and keep port 8443 unless the gateway uses a different port.</p>
+        <p>Advanced polling, sunrise, sunset and Domoticz API settings are available in <code>config.txt</code>.</p>
+    </description>
     <params>
         <param field="Username" label="Username" width="200px" required="true" default=""/>
         <param field="Password" label="Password" width="200px" required="true" default="" password="true"/>
         <param field="Mode4" label="Connection" width="150px">
-            <description><br/>Somfy is deprecating Web access, so it is better to use the local API</description>
+            <description><br/>Local IP is recommended because Somfy is deprecating legacy web access.</description>
             <options>
                 <option label="Web" value="Web"/>
                 <option label="Local PIN" value="Local"/>
@@ -85,12 +37,12 @@
             </options>
         </param>
         <param field="Address" label="Gateway PIN" width="175px" required="true" default="1234-1234-1234"/>
-        <param field="Mode3" label="Local IP Address" width="175px" default=""/>
-        <param field="Port" label="Portnumber Tahoma box" width="100px" required="true" default="8443"/>
-        <param field="Mode1" label="Reset token" width="100px">            
+        <param field="Mode3" label="Local IP address" width="175px" default=""/>
+        <param field="Port" label="Gateway port" width="100px" required="true" default="8443"/>
+        <param field="Mode1" label="Reset local API token" width="100px">
             <options>
-                <option label="False" value="false" default="true"/>
-                <option label="True" value="true" />
+                <option label="No" value="false" default="true"/>
+                <option label="Yes" value="true" />
             </options>
         </param>
         <param field="Mode6" label="Debug logging" width="100px">

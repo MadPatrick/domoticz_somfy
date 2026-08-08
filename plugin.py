@@ -542,6 +542,15 @@ class BasePlugin:
             else:
                 Domoticz.Error(f"Command {Command} not supported for unit 2")
                 return False
+        elif Unit == 3:
+            if "On" in Command:
+                commands["name"] = "my"
+                tmp = max(100 - int(Level), 0)
+                params.append(tmp)
+                commands["parameters"] = params
+            else:
+                Domoticz.Error(f"Command {Command} not supported for unit 3")
+                return False
         else:
             Domoticz.Error(f"Unit {Unit} not supported")
             return False
@@ -894,6 +903,7 @@ class BasePlugin:
 
             if device["deviceURL"] in Devices:
                 logging.debug("create_devices: device bestaat al, overslaan: " + device["label"])
+                self.create_missing_units(device)
                 continue
 
             swtype = None
@@ -931,11 +941,28 @@ class BasePlugin:
             else:
                 Domoticz.Unit(Name=device["label"], Unit=1, Type=deviceType, Subtype=subtype2, Switchtype=swtype, DeviceID=device["deviceURL"], Used=used).Create()
 
+            self.create_missing_units(device)
+
             logging.info("New device created: "+device["label"])
             Domoticz.Log("New device created: "+device["label"])
 
         logging.debug("create_devices: finished create devices")
         return len(filtered_devices), created_devices
+
+    def _unit_exists(self, device_id, unit_number):
+        if device_id in Devices:
+            device = Devices[device_id]
+            if unit_number in device.Units:
+                return True
+        return False
+
+    def create_missing_units(self, device):
+        """Create units that may not have been created by previous versions of the plugin."""
+        # Unit 3: command 'my', same as pressing the button 'my' of a remote
+        for command in device["definition"]["commands"]:
+            if command["commandName"] == "my" and not self._unit_exists(device["deviceURL"], 3):
+                Domoticz.Unit(Name=device["label"] + " - my", Unit=3, Type=244, Subtype=73, Switchtype=9, DeviceID=device["deviceURL"], Used=True).Create()
+                break
 
     def create_connection_device(self):
         if _CONNECTION_DEVICE_ID not in Devices:

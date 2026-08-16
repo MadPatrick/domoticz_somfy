@@ -7,10 +7,10 @@
 #
 ###################################################################################
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.3.2" externallink="https://github.com/MadPatrick/somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.3.3" externallink="https://github.com/MadPatrick/somfy">
     <description>
         <h2>Somfy TaHoma / Connexoon</h2>
-        <p><strong>Version:</strong> 5.3.2</p>
+        <p><strong>Version:</strong> 5.3.3</p>
         <p>Connects Domoticz to a Somfy TaHoma or Connexoon gateway through the local API or legacy web API.</p>
         <h3>Features</h3>
         <ul>
@@ -542,6 +542,12 @@ class BasePlugin:
             else:
                 Domoticz.Error(f"Command {Command} not supported for unit 2")
                 return False
+        elif Unit == 3:
+            if "On" in Command:
+                commands["name"] = "my"
+            else:
+                Domoticz.Error(f"Command {Command} not supported for unit 3")
+                return False
         else:
             Domoticz.Error(f"Unit {Unit} not supported")
             return False
@@ -931,11 +937,17 @@ class BasePlugin:
             else:
                 Domoticz.Unit(Name=device["label"], Unit=1, Type=deviceType, Subtype=subtype2, Switchtype=swtype, DeviceID=device["deviceURL"], Used=used).Create()
 
+            if self._device_supports_command(device, "my"):
+                Domoticz.Unit(Name=device["label"] + " my", Unit=3, Type=244, Subtype=73, Switchtype=9, DeviceID=device["deviceURL"], Used=True).Create()
+
             logging.info("New device created: "+device["label"])
             Domoticz.Log("New device created: "+device["label"])
 
         logging.debug("create_devices: finished create devices")
         return len(filtered_devices), created_devices
+
+    def _device_supports_command(self, device, command_name):
+        return any(command["commandName"] == command_name for command in device["definition"]["commands"])
 
     def create_connection_device(self):
         if _CONNECTION_DEVICE_ID not in Devices:

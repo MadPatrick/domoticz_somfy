@@ -512,6 +512,18 @@ class BasePlugin:
 
     def onCommand(self, DeviceId, Unit, Command, Level, Hue):
         Domoticz.Debug(f"onCommand: DeviceId: {DeviceId}, Unit: {Unit}, Command: {Command}, Level: {Level}, Hue: {Hue}")
+
+        try:
+            device_name = Devices[DeviceId].Units[Unit].Name
+        except NameError:
+            Domoticz.Error(
+                "Somfy: Devices dictionary not available yet (plugin still starting up?), ignoring command."
+            )
+            return False
+        except KeyError:
+            Domoticz.Error(f"Somfy: Unknown DeviceId/Unit {DeviceId}/{Unit} in onCommand, ignoring command.")
+            return False
+
         self.actions_serialized = []
         commands_serialized = []
         action = {}
@@ -558,7 +570,7 @@ class BasePlugin:
         self.actions_serialized.append(action)
 
         data = {
-            "label": f"Domoticz - {Devices[DeviceId].Units[Unit].Name} - {commands['name']}",
+            "label": f"Domoticz - {device_name} - {commands['name']}",
             "actions": self.actions_serialized
         }
         if self.local:

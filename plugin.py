@@ -7,10 +7,10 @@
 #
 ###################################################################################
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.3.3" externallink="https://github.com/MadPatrick/somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.3.4" externallink="https://github.com/MadPatrick/somfy">
     <description>
         <h2>Somfy TaHoma / Connexoon</h2>
-        <p><strong>Version:</strong> 5.3.3</p>
+        <p><strong>Version:</strong> 5.3.4</p>
         <p>Connects Domoticz to a Somfy TaHoma or Connexoon gateway through the local API or legacy web API.</p>
         <h3>Features</h3>
         <ul>
@@ -409,24 +409,12 @@ class BasePlugin:
         self.heartbeat = False
 
     def onConnect(self, Connection, Status, Description):
-        Domoticz.Debug("onConnect: Connection: '"+str(Connection)+"', Status: '"+str(Status)+"', Description: '"+str(Description)+"' self.tahoma.logged_in: '"+str(self.tahoma.logged_in)+"'")
-        if (Status == 0 and not self.local and not self.tahoma.logged_in):
-            self._ensure_web_login()
-        elif ((self.local or self.tahoma.logged_in) and (not self.command)):
-            event_list = self.tahoma.get_events()
-            self.update_devices_status(event_list)
-        elif (self.command):
-            self.tahoma.send_command(self.command_data)
-            try:
-                event_list = self.tahoma.get_events()
-                self.update_devices_status(event_list)
-            except Exception as e:
-                Domoticz.Debug("Could not fetch events after command: " + str(e))
-            self.command = False
-            self.heartbeat = False
-            self.actions_serialized = []
-        else:
-            logging.info("Failed to connect to tahoma api")
+        # Not used by this plugin: no Domoticz.Connection(...) object is ever
+        # created, so Domoticz never invokes this callback. All I/O (login,
+        # event fetch, command dispatch) happens synchronously via
+        # onCommand/onHeartbeat instead. Kept as a no-op because Domoticz
+        # requires the callback to exist.
+        Domoticz.Debug("onConnect called (not used by this plugin; I/O is synchronous via onCommand/onHeartbeat)")
 
     def refresh_daily_data(self):
         """
@@ -508,7 +496,10 @@ class BasePlugin:
         return f"Day starts {day_str} | Night starts {night_str}"
 
     def onMessage(self, Connection, Data):
-        Domoticz.Debug("onMessage called (not implemented). Data: " + str(Data))
+        # Not used by this plugin: no Domoticz.Connection(...) object is ever
+        # created, so Domoticz never invokes this callback. Kept as a no-op
+        # because Domoticz requires the callback to exist.
+        Domoticz.Debug("onMessage called (not used by this plugin; I/O is synchronous via onCommand/onHeartbeat)")
 
     def onCommand(self, DeviceId, Unit, Command, Level, Hue):
         Domoticz.Debug(f"onCommand: DeviceId: {DeviceId}, Unit: {Unit}, Command: {Command}, Level: {Level}, Hue: {Hue}")
@@ -622,7 +613,10 @@ class BasePlugin:
         return True
 
     def onDisconnect(self, Connection):
-        return
+        # Not used by this plugin: no Domoticz.Connection(...) object is ever
+        # created, so Domoticz never invokes this callback. Kept as a no-op
+        # because Domoticz requires the callback to exist.
+        Domoticz.Debug("onDisconnect called (not used by this plugin; I/O is synchronous via onCommand/onHeartbeat)")
 
     def onHeartbeat(self):
         self.runCounter -= 1

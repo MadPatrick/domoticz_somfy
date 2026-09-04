@@ -176,7 +176,7 @@ class Tahoma:
                     break
             except requests.exceptions.RequestException as exp:
                 logging.error("get_devices RequestException: " + str(exp))
-            time.sleep(i ** 3)
+            time.sleep(min(2 * i, 5))
         else:
             raise exceptions.TooManyRetries
 
@@ -256,7 +256,7 @@ class Tahoma:
 
             except requests.exceptions.RequestException as exp:
                 logging.error("get_events RequestException: " + str(exp))
-            time.sleep(i ** 3)
+            time.sleep(min(2 * i, 5))
         else:
             raise exceptions.TooManyRetries
 

@@ -9,8 +9,21 @@ import utils
 import listener
 import DomoticzEx as Domoticz
 
+import warnings
 import urllib3
-urllib3.disable_warnings()
+from contextlib import contextmanager
+
+
+@contextmanager
+def _suppress_insecure_warning():
+    """Locally suppress urllib3's InsecureRequestWarning for requests to the
+    local Somfy/TaHoma hub, which uses a self-signed certificate by design
+    (verify=False). Scoped to this context only, instead of disabling the
+    warning process-wide for the whole interpreter."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=urllib3.exceptions.InsecureRequestWarning)
+        yield
+
 
 class TahomaWebApi:
     base_url_web = "https://ha101-1.overkiz.com"
@@ -170,7 +183,8 @@ class SomfyBox(TahomaWebApi):
     def get_version(self):
         if self.token is None or self.token == "0":
             raise exceptions.TahomaException("No token has been provided")
-        response = requests.get(self.base_url_local + "/apiVersion", headers=self.headers_with_token, verify=False, timeout=10)
+        with _suppress_insecure_warning():
+            response = requests.get(self.base_url_local + "/apiVersion", headers=self.headers_with_token, verify=False, timeout=10)
         if response.status_code == 200:
             data = utils.response_json(response, "get API version")
             logging.debug("succeeded to get API version: " + str(data))
@@ -183,7 +197,8 @@ class SomfyBox(TahomaWebApi):
     def get_gateways(self):
         if self.token is None or self.token == "0":
             raise exceptions.TahomaException("No token has been provided")
-        response = requests.get(self.base_url_local + "/setup/gateways", headers=self.headers_with_token, verify=False, timeout=10)
+        with _suppress_insecure_warning():
+            response = requests.get(self.base_url_local + "/setup/gateways", headers=self.headers_with_token, verify=False, timeout=10)
         logging.debug(response)
         if response.status_code == 200:
             data = utils.response_json(response, "get gateways")
@@ -200,12 +215,13 @@ class SomfyBox(TahomaWebApi):
             raise exceptions.TahomaException("No token has been provided")
 
         try:
-            response = requests.get(
-                self.base_url_local + "/setup/devices",
-                headers=self.headers_with_token,
-                verify=False,
-                timeout=10
-            )
+            with _suppress_insecure_warning():
+                response = requests.get(
+                    self.base_url_local + "/setup/devices",
+                    headers=self.headers_with_token,
+                    verify=False,
+                    timeout=10
+                )
         except requests.exceptions.RequestException as exp:
             raise exceptions.TahomaException(
                 f"Failed to get devices: {exp}"
@@ -240,7 +256,8 @@ class SomfyBox(TahomaWebApi):
             raise exceptions.TahomaException("Invalid url, needs to start with io://")
         url = self.base_url_local + "/setup/devices/" + urllib.parse.quote(device, safe="") + "/states"
         logging.debug("url for device state: " + str(url))
-        response = requests.get(url, headers=self.headers_with_token, verify=False, timeout=10)
+        with _suppress_insecure_warning():
+            response = requests.get(url, headers=self.headers_with_token, verify=False, timeout=10)
         logging.debug(response)
         if response.status_code == 200:
             data = utils.response_json(response, "get device state")
@@ -260,7 +277,8 @@ class SomfyBox(TahomaWebApi):
             raise exceptions.NoListenerFailure()
         for i in range(1, 4):
             try:
-                response = requests.post(self.base_url_local + "/events/" + self.listener.listenerId + "/fetch", headers=self.headers_with_token, verify=False, timeout=10)
+                with _suppress_insecure_warning():
+                    response = requests.post(self.base_url_local + "/events/" + self.listener.listenerId + "/fetch", headers=self.headers_with_token, verify=False, timeout=10)
                 logging.debug("get events response: status '" + str(response.status_code) + "' response body: '" + str(response) + "'")
                 if response.status_code != 200:
                     logging.error("error during get events, status: " + str(response.status_code) + ", " + str(response.text))
@@ -288,7 +306,7 @@ class SomfyBox(TahomaWebApi):
                     logging.info("Return status " + str(response.status_code))
             except requests.exceptions.RequestException as exp:
                 logging.error("get_events RequestException: " + str(exp))
-            time.sleep(i ** 3)
+            time.sleep(min(2 * i, 5))
         else:
             raise exceptions.TooManyRetries
         logging.debug("finished get events")
@@ -297,7 +315,8 @@ class SomfyBox(TahomaWebApi):
         logging.debug("start register")
         if self.token is None or self.token == "0":
             raise exceptions.TahomaException("No token has been provided")
-        response = self.listener.register_listener(self.base_url_local + "/events/register", headers=self.headers_with_token, verify=False, timeout=10)
+        with _suppress_insecure_warning():
+            response = self.listener.register_listener(self.base_url_local + "/events/register", headers=self.headers_with_token, verify=False, timeout=10)
         return response
 
     #execution endpoints
@@ -307,7 +326,8 @@ class SomfyBox(TahomaWebApi):
         logging.info("Sending command to local api")
         logging.debug("onCommand: data '"+str(json_data)+"'")
         try:
-            response = requests.post(self.base_url_local + "/exec/apply", headers=self.headers_with_token, json=json_data, verify=False, timeout=self.timeout)
+            with _suppress_insecure_warning():
+                response = requests.post(self.base_url_local + "/exec/apply", headers=self.headers_with_token, json=json_data, verify=False, timeout=self.timeout)
         except requests.exceptions.RequestException as exp:
             logging.error("Send command returns RequestException: " + str(exp))
             return ""

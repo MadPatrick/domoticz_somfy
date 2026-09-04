@@ -7,10 +7,10 @@
 #
 ###################################################################################
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.3.4" externallink="https://github.com/MadPatrick/somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.3.5" externallink="https://github.com/MadPatrick/somfy">
     <description>
         <h2>Somfy TaHoma / Connexoon</h2>
-        <p><strong>Version:</strong> 5.3.4</p>
+        <p><strong>Version:</strong> 5.3.5</p>
         <p>Connects Domoticz to a Somfy TaHoma or Connexoon gateway through the local API or legacy web API.</p>
         <h3>Features</h3>
         <ul>
@@ -73,6 +73,11 @@ import ipaddress
 _CONNECTION_DEVICE_ID = "connection_indicator"
 
 class BasePlugin:
+    # How long (seconds) a command received before the Devices dictionary is
+    # ready (e.g. while onStart is still logging in / syncing devices) is
+    # held for retry before being dropped.
+    PENDING_COMMAND_MAX_AGE_SECS = 120
+
     def __init__(self):
         self.enabled = False
         self.heartbeat = False
@@ -82,6 +87,10 @@ class BasePlugin:
         self.actions_serialized = []
         self.local = False
         self.local_ip_mode = False  # True when Mode4 == "LocalIP"
+
+        # Commands received before Devices was ready, queued for retry on the
+        # next onHeartbeat tick(s). Each entry: (DeviceId, Unit, Command, Level, Hue, first_seen_ts).
+        self._pending_commands = []
 
         # Device / mode tracking
         self._last_mode = None
@@ -503,16 +512,43 @@ class BasePlugin:
 
     def onCommand(self, DeviceId, Unit, Command, Level, Hue):
         Domoticz.Debug(f"onCommand: DeviceId: {DeviceId}, Unit: {Unit}, Command: {Command}, Level: {Level}, Hue: {Hue}")
+        return self._dispatch_command(DeviceId, Unit, Command, Level, Hue, first_seen=None)
 
+    def _flush_pending_commands(self):
+        """Retry any commands that arrived before Devices was ready. Called every
+        onHeartbeat tick; a no-op when nothing is queued."""
+        if not self._pending_commands:
+            return
+
+        pending, self._pending_commands = self._pending_commands, []
+        for DeviceId, Unit, Command, Level, Hue, first_seen in pending:
+            self._dispatch_command(DeviceId, Unit, Command, Level, Hue, first_seen=first_seen)
+
+    def _dispatch_command(self, DeviceId, Unit, Command, Level, Hue, first_seen):
+        """Resolve DeviceId/Unit and execute the command. If Devices isn't ready
+        yet, queue it for retry (up to PENDING_COMMAND_MAX_AGE_SECS) instead of
+        dropping it - `first_seen` is None for a fresh command from Domoticz,
+        or the original queue timestamp when called from _flush_pending_commands."""
         try:
             device_name = Devices[DeviceId].Units[Unit].Name
         except NameError:
-            Domoticz.Error(
-                "Somfy: Devices dictionary not available yet (plugin still starting up?), ignoring command."
-            )
+            now = time.time()
+            queued_since = first_seen if first_seen is not None else now
+            if now - queued_since > self.PENDING_COMMAND_MAX_AGE_SECS:
+                Domoticz.Error(
+                    f"Giving up on command for DeviceId {DeviceId}/Unit {Unit}: "
+                    f"Devices dictionary still not available after {int(now - queued_since)}s."
+                )
+                return False
+            self._pending_commands.append((DeviceId, Unit, Command, Level, Hue, queued_since))
+            if first_seen is None:
+                Domoticz.Status(
+                    f"Devices dictionary not available yet (plugin still starting up?); "
+                    f"command for DeviceId {DeviceId}/Unit {Unit} queued for retry."
+                )
             return False
         except KeyError:
-            Domoticz.Error(f"Somfy: Unknown DeviceId/Unit {DeviceId}/{Unit} in onCommand, ignoring command.")
+            Domoticz.Error(f"Unknown DeviceId/Unit {DeviceId}/{Unit} in onCommand, ignoring command.")
             return False
 
         self.actions_serialized = []
@@ -623,6 +659,8 @@ class BasePlugin:
 
         if not self.enabled:
             return False
+
+        self._flush_pending_commands()
 
         today = datetime.datetime.now().day
         if today != self.last_config_day:

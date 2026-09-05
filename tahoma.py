@@ -312,7 +312,7 @@ class Tahoma:
             )
         except requests.exceptions.RequestException as exp:
             logging.error("Send command returns RequestException: " + str(exp))
-            return ""
+            raise exceptions.TahomaException("Network error while sending command: " + str(exp))
 
         if response.status_code != 200:
             self.__logged_in = False

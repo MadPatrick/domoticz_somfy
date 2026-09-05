@@ -169,7 +169,7 @@ class TahomaWebApi:
         return data
 
 class SomfyBox(TahomaWebApi):
-    def __init__(self, pin=None, port=8443, ip=None):
+    def __init__(self, pin=None, port=8443, ip=None, verify=False):
         host = ip if ip else str(pin) + ".local"
         self.headers_url = dict(self.headers_url)
         self.headers_json = dict(self.headers_json)
@@ -177,6 +177,11 @@ class SomfyBox(TahomaWebApi):
         self.base_url_local = "https://" + host + ":" + str(port) + "/enduser-mobile-web/1/enduserAPI"
         self.startup = True
         self.listener = listener.Listener(8)
+        # False keeps the historical behavior of skipping certificate
+        # verification (the TaHoma/Connexoon box uses a self-signed
+        # certificate by default); a path string points at a CA bundle to
+        # verify the hub's certificate against instead.
+        self.verify = verify
         logging.debug("SomfyBox initialised")
         Domoticz.Log("TaHoma LOCAL client loaded")
 
@@ -184,7 +189,7 @@ class SomfyBox(TahomaWebApi):
         if self.token is None or self.token == "0":
             raise exceptions.TahomaException("No token has been provided")
         with _suppress_insecure_warning():
-            response = requests.get(self.base_url_local + "/apiVersion", headers=self.headers_with_token, verify=False, timeout=10)
+            response = requests.get(self.base_url_local + "/apiVersion", headers=self.headers_with_token, verify=self.verify, timeout=10)
         if response.status_code == 200:
             data = utils.response_json(response, "get API version")
             logging.debug("succeeded to get API version: " + str(data))
@@ -198,7 +203,7 @@ class SomfyBox(TahomaWebApi):
         if self.token is None or self.token == "0":
             raise exceptions.TahomaException("No token has been provided")
         with _suppress_insecure_warning():
-            response = requests.get(self.base_url_local + "/setup/gateways", headers=self.headers_with_token, verify=False, timeout=10)
+            response = requests.get(self.base_url_local + "/setup/gateways", headers=self.headers_with_token, verify=self.verify, timeout=10)
         logging.debug(response)
         if response.status_code == 200:
             data = utils.response_json(response, "get gateways")
@@ -219,7 +224,7 @@ class SomfyBox(TahomaWebApi):
                 response = requests.get(
                     self.base_url_local + "/setup/devices",
                     headers=self.headers_with_token,
-                    verify=False,
+                    verify=self.verify,
                     timeout=10
                 )
         except requests.exceptions.RequestException as exp:
@@ -257,7 +262,7 @@ class SomfyBox(TahomaWebApi):
         url = self.base_url_local + "/setup/devices/" + urllib.parse.quote(device, safe="") + "/states"
         logging.debug("url for device state: " + str(url))
         with _suppress_insecure_warning():
-            response = requests.get(url, headers=self.headers_with_token, verify=False, timeout=10)
+            response = requests.get(url, headers=self.headers_with_token, verify=self.verify, timeout=10)
         logging.debug(response)
         if response.status_code == 200:
             data = utils.response_json(response, "get device state")
@@ -278,7 +283,7 @@ class SomfyBox(TahomaWebApi):
         for i in range(1, 4):
             try:
                 with _suppress_insecure_warning():
-                    response = requests.post(self.base_url_local + "/events/" + self.listener.listenerId + "/fetch", headers=self.headers_with_token, verify=False, timeout=10)
+                    response = requests.post(self.base_url_local + "/events/" + self.listener.listenerId + "/fetch", headers=self.headers_with_token, verify=self.verify, timeout=10)
                 logging.debug("get events response: status '" + str(response.status_code) + "' response body: '" + str(response) + "'")
                 if response.status_code != 200:
                     logging.error("error during get events, status: " + str(response.status_code) + ", " + str(response.text))
@@ -316,7 +321,7 @@ class SomfyBox(TahomaWebApi):
         if self.token is None or self.token == "0":
             raise exceptions.TahomaException("No token has been provided")
         with _suppress_insecure_warning():
-            response = self.listener.register_listener(self.base_url_local + "/events/register", headers=self.headers_with_token, verify=False, timeout=10)
+            response = self.listener.register_listener(self.base_url_local + "/events/register", headers=self.headers_with_token, verify=self.verify, timeout=10)
         return response
 
     #execution endpoints
@@ -327,10 +332,10 @@ class SomfyBox(TahomaWebApi):
         logging.debug("onCommand: data '"+str(json_data)+"'")
         try:
             with _suppress_insecure_warning():
-                response = requests.post(self.base_url_local + "/exec/apply", headers=self.headers_with_token, json=json_data, verify=False, timeout=self.timeout)
+                response = requests.post(self.base_url_local + "/exec/apply", headers=self.headers_with_token, json=json_data, verify=self.verify, timeout=self.timeout)
         except requests.exceptions.RequestException as exp:
             logging.error("Send command returns RequestException: " + str(exp))
-            return ""
+            raise exceptions.TahomaException("Network error while sending command: " + str(exp))
         if response.status_code != 200:
             utils.handle_response(response, "send command")
         data = utils.response_json(response, "send command")

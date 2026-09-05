@@ -7,10 +7,10 @@
 #
 ###################################################################################
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.3.5" externallink="https://github.com/MadPatrick/somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.3.6" externallink="https://github.com/MadPatrick/somfy">
     <description>
         <h2>Somfy TaHoma / Connexoon</h2>
-        <p><strong>Version:</strong> 5.3.5</p>
+        <p><strong>Version:</strong> 5.3.6</p>
         <p>Connects Domoticz to a Somfy TaHoma or Connexoon gateway through the local API or legacy web API.</p>
         <h3>Features</h3>
         <ul>
@@ -39,6 +39,7 @@
         <param field="Address" label="Gateway PIN" width="175px" required="true" default="1234-1234-1234"/>
         <param field="Mode3" label="Local IP address" width="175px" default=""/>
         <param field="Port" label="Gateway port" width="100px" required="true" default="8443"/>
+        <param field="Mode2" label="Local hub CA Certificate Path (optional, leave empty to disable verification)" width="300px" required="false" default=""/>
         <param field="Mode1" label="Reset local API token" width="100px">
             <options>
                 <option label="No" value="false" default="true"/>
@@ -69,6 +70,8 @@ from tahoma_local import SomfyBox
 import utils
 import urllib.request
 import ipaddress
+import threading
+import queue
 
 _CONNECTION_DEVICE_ID = "connection_indicator"
 
@@ -129,6 +132,18 @@ class BasePlugin:
         # Login failure tracking / auto-reconnect
         self._login_fail_count = 0
         self._max_login_failures = 3  # number of consecutive failures before a reconnect is attempted
+
+        # deviceURL -> uiClass (e.g. "Awning", "RollerShutter"), populated in
+        # create_devices() for every device Tahoma reports, so _dispatch_command
+        # can mirror update_devices_status()'s device-class-aware inversion.
+        self._device_classes = {}
+
+        # Background poll-cycle worker (converts the blocking onHeartbeat
+        # polling cycle to async): guards against overlapping fetches and
+        # hands results back to the main thread for Devices[...] updates.
+        self._fetch_lock = threading.Lock()
+        self._fetch_in_progress = False
+        self._result_queue = queue.Queue()
 
     def _read_int_parameter(self, field, default, minimum=None, maximum=None):
         raw = Parameters.get(field, "")
@@ -213,12 +228,12 @@ class BasePlugin:
             except ValueError:
                 Domoticz.Error(f"Invalid IP address in 'Local IP Address' field: '{mode3}'. Plugin cannot start.")
                 return False
-            self.tahoma = SomfyBox(None, port, ip=mode3)
+            self.tahoma = SomfyBox(None, port, ip=mode3, verify=self._tls_verify_option())
             self.local       = True
             self.local_ip_mode = True
             Domoticz.Log(f"Local IP connection configured: {mode3}:{port}")
         elif mode4 == "Local":
-            self.tahoma = SomfyBox(pin, port)
+            self.tahoma = SomfyBox(pin, port, verify=self._tls_verify_option())
             self.local       = True
             self.local_ip_mode = False
             Domoticz.Log(f"Local PIN connection configured: {pin}.local:{port}")
@@ -368,6 +383,14 @@ class BasePlugin:
 
     def _reset_token_requested(self):
         return str(Parameters.get("Mode1", "false")).lower() == "true"
+
+    def _tls_verify_option(self):
+        """Return the user-configured CA certificate path (Mode2) for the
+        local hub's TLS verification, or False to keep the historical
+        behavior of skipping certificate verification (the TaHoma/Connexoon
+        box uses a self-signed certificate by default)."""
+        value = Parameters.get("Mode2", "").strip()
+        return value if value else False
 
     def _ensure_web_login(self):
         if not self.tahoma.logged_in:
@@ -566,7 +589,15 @@ class BasePlugin:
                 commands["name"] = "stop"
             elif "Set Level" in Command:
                 commands["name"] = "setClosure"
-                tmp = max(100 - int(Level), 0)
+                # Mirror update_devices_status()'s read-side mapping: Awning
+                # devices report core:ClosureState/DeploymentState directly
+                # (no inversion), everything else inverted. Sending the
+                # opposite convention here made Domoticz redisplay 100-Level
+                # as soon as the next state update came in.
+                if self._device_classes.get(DeviceId) == "Awning":
+                    tmp = max(min(int(Level), 100), 0)
+                else:
+                    tmp = max(100 - int(Level), 0)
                 params.append(tmp)
                 commands["parameters"] = params
             else:
@@ -575,7 +606,10 @@ class BasePlugin:
         elif Unit == 2:
             if "Set Level" in Command:
                 commands["name"] = "setOrientation"
-                tmp = max(100 - int(Level), 1)
+                # update_devices_status() reads core:SlateOrientationState
+                # verbatim (no inversion) for all device classes, so the
+                # value sent here must match, not be inverted.
+                tmp = max(int(Level), 1)
                 params.append(tmp)
                 commands["parameters"] = params
             else:
@@ -660,6 +694,15 @@ class BasePlugin:
         if not self.enabled:
             return False
 
+        # Apply results of any poll cycle the background worker completed
+        # since the last tick - main thread, safe to touch Devices[...] here.
+        while True:
+            try:
+                result = self._result_queue.get_nowait()
+            except queue.Empty:
+                break
+            self._apply_poll_result(result)
+
         self._flush_pending_commands()
 
         today = datetime.datetime.now().day
@@ -738,86 +781,111 @@ class BasePlugin:
         # Polling cycle
         #
         if self.runCounter <= 0 or self.heartbeat:
-
-            filtered_devices = None
-
-            try:
-
-                #
-                # REAL connectivity test
-                #
-                if self.local:
-
-                    filtered_devices = self.tahoma.get_devices()
-
-                else:
-
-                    if not self.tahoma.logged_in:
-                        self.tahoma.tahoma_login(
-                            str(Parameters["Username"]),
-                            str(Parameters["Password"])
-                        )
-
-                    filtered_devices = self.tahoma.get_devices()
-
-                #
-                # Successful communication
-                #
-                if self.connected is False:
-                    Domoticz.Log("Connection restored")
-
-                    if self.local:
-                        try:
-                            self.tahoma.register_listener()
-                            Domoticz.Log("Listener re-registered after connection restore")
-                        except Exception as e:
-                            Domoticz.Error(f"Failed to re-register listener: {e}")
-
-                self.connected = True
-                self._last_error = ""
-                self._last_connected_time = datetime.datetime.now()
-                self._login_fail_count = 0
-
-                #
-                # Update device states
-                #
-                if filtered_devices is not None:
-                    self.update_devices_status(
-                        utils.filter_states(filtered_devices)
-                    )
-
-                self.update_connection_device(True)
-
-            except Exception as e:
-
-                msg = str(e).lower()
-
-                if "no route to host" in msg:
-                    short = "No route to host"
-                elif "connection refused" in msg:
-                    short = "Connection refused"
-                elif "timed out" in msg:
-                    short = "Connection timed out"
-                else:
-                    short = str(e)
-
-                if self.connected is True or self.connected is None:
-                    Domoticz.Error(f"Communication lost: {short}")
-
-                self.connected = False
-                self._last_error = short
-
-                self.update_connection_device(False)
-
-                self._login_fail_count += 1
-
-                if self._login_fail_count >= self._max_login_failures:
-                    self._do_reconnect()
-
+            self._trigger_poll_cycle()
             self.runCounter = interval
             self.heartbeat = False
 
         return True
+
+    def _trigger_poll_cycle(self):
+        """Starts the background worker for one Tahoma poll cycle (get_devices,
+        login, listener re-registration, reconnect-on-failure). Runs on the
+        main thread; only starts a thread and returns immediately so the
+        blocking network I/O never stalls onHeartbeat."""
+        with self._fetch_lock:
+            if self._fetch_in_progress:
+                Domoticz.Debug("Tahoma poll already in progress, skipping this heartbeat trigger.")
+                return
+            self._fetch_in_progress = True
+
+        threading.Thread(target=self._poll_worker, daemon=True).start()
+
+    def _poll_worker(self):
+        """Runs on a background thread. Only performs blocking network I/O
+        (get_devices/login/register_listener/_do_reconnect - none of which
+        touch Devices[...]) and hands the result back through
+        self._result_queue. Devices[...] updates happen in
+        _apply_poll_result(), on the main thread, from onHeartbeat."""
+        try:
+            if self.local:
+                filtered_devices = self.tahoma.get_devices()
+            else:
+                if not self.tahoma.logged_in:
+                    self.tahoma.tahoma_login(
+                        str(Parameters["Username"]),
+                        str(Parameters["Password"])
+                    )
+                filtered_devices = self.tahoma.get_devices()
+
+            listener_reregistered = False
+            if self.connected is False and self.local:
+                try:
+                    self.tahoma.register_listener()
+                    listener_reregistered = True
+                except Exception as e:
+                    Domoticz.Error(f"Failed to re-register listener: {e}")
+
+            self._login_fail_count = 0
+            self._result_queue.put(("ok", filtered_devices, listener_reregistered))
+
+        except Exception as e:
+
+            msg = str(e).lower()
+
+            if "no route to host" in msg:
+                short = "No route to host"
+            elif "connection refused" in msg:
+                short = "Connection refused"
+            elif "timed out" in msg:
+                short = "Connection timed out"
+            else:
+                short = str(e)
+
+            self._login_fail_count += 1
+
+            if self._login_fail_count >= self._max_login_failures:
+                self._do_reconnect()
+
+            self._result_queue.put(("error", short))
+
+        finally:
+            with self._fetch_lock:
+                self._fetch_in_progress = False
+
+    def _apply_poll_result(self, result):
+        """Applies one _poll_worker result. Main thread only (called from
+        onHeartbeat) - safe to touch Devices[...] here."""
+        kind = result[0]
+
+        if kind == "ok":
+            _, filtered_devices, listener_reregistered = result
+
+            if self.connected is False:
+                Domoticz.Log("Connection restored")
+                if listener_reregistered:
+                    Domoticz.Log("Listener re-registered after connection restore")
+
+            self.connected = True
+            self._last_error = ""
+            self._last_connected_time = datetime.datetime.now()
+
+            if filtered_devices is not None:
+                self.update_devices_status(
+                    utils.filter_states(filtered_devices)
+                )
+
+            self.update_connection_device(True)
+
+        else:
+            _, short = result
+
+            if self.connected is True or self.connected is None:
+                Domoticz.Error(f"Communication lost: {short}")
+
+            self.connected = False
+            self._last_error = short
+
+            self.update_connection_device(False)
 
 
     def update_devices_status(self, Updated_devices):
@@ -941,6 +1009,8 @@ class BasePlugin:
                 device = json.loads(device)
 
             logging.debug("create_devices: check if need to create device: "+device["label"])
+
+            self._device_classes[device["deviceURL"]] = device["definition"]["uiClass"]
 
             if device["deviceURL"] in Devices:
                 logging.debug("create_devices: device bestaat al, overslaan: " + device["label"])

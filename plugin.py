@@ -26,9 +26,13 @@
         <p>Advanced polling, sunrise, sunset and Domoticz API settings are available in <code>config.txt</code>.</p>
     </description>
     <params>
-        <param field="Username" label="Username" width="200px" required="true" default=""/>
+        <param field="Username" label="Username" width="200px" required="true" default="">
+            <description>
+                <h4 style="margin:4px 0 6px 0;">Connection</h4>
+            </description>
+        </param>
         <param field="Password" label="Password" width="200px" required="true" default="" password="true"/>
-        <param field="Mode4" label="Connection" width="150px">
+        <param field="ConnectionMode" label="Connection" width="150px">
             <description><br/>Local IP is recommended because Somfy is deprecating legacy web access.</description>
             <options>
                 <option label="Web" value="Web"/>
@@ -36,16 +40,27 @@
                 <option label="Local IP" value="LocalIP" default="true"/>
             </options>
         </param>
-        <param field="Gateway" label="Gateway PIN" width="175px" required="true" default="1234-1234-1234"/>
+        <param field="Gateway" label="Gateway PIN" width="175px" required="true" default="1234-1234-1234">
+            <description>
+                <h4 style="margin:14px 0 6px 0; border-top:1px solid #ccc; padding-top:8px;">Gateway</h4>
+            </description>
+        </param>
         <param field="Address" label="Local IP address" width="175px" default=""/>
         <param field="Port" label="Gateway port" width="100px" required="true" default="8443"/>
-        <param field="Mode1" label="Reset local API token" width="100px">
+        <param field="ResetToken" label="Reset local API token" width="100px">
+            <description>
+                <h4 style="margin:14px 0 6px 0; border-top:1px solid #ccc; padding-top:8px;">Maintenance</h4>
+            </description>
             <options>
                 <option label="No" value="false" default="true"/>
                 <option label="Yes" value="true" />
             </options>
         </param>
-        <param field="EnableDebug" type="boolean" label="Debug" default="false"/>
+        <param field="EnableDebug" type="boolean" label="Debug" default="false">
+            <description>
+                <h4 style="margin:14px 0 6px 0; border-top:1px solid #ccc; padding-top:8px;">Logging</h4>
+            </description>
+        </param>
     </params>
 </plugin>
 """
@@ -83,7 +98,7 @@ class BasePlugin:
         self.command = False
         self.actions_serialized = []
         self.local = False
-        self.local_ip_mode = False  # True when Mode4 == "LocalIP"
+        self.local_ip_mode = False  # True when ConnectionMode == "LocalIP"
 
         # Commands received before Devices was ready, queued for retry on the
         # next onHeartbeat tick(s). Each entry: (DeviceId, Unit, Command, Level, Hue, first_seen_ts).
@@ -155,6 +170,20 @@ class BasePlugin:
                 f"Invalid {field} value '{raw}'. Using default {default}."
             )
             return default
+
+    def _read_migrated_parameter(self, field, legacy_field, default=""):
+        """Read a named setting, falling back to its former ModeX field.
+
+        Empty defaults on the new settings make existing Domoticz hardware
+        configurations continue to work until they are saved with the new
+        field names.
+        """
+        raw = Parameters.get(field, "")
+        if raw is None or str(raw).strip() == "":
+            raw = Parameters.get(legacy_field, "")
+        if raw is None or str(raw).strip() == "":
+            return default
+        return raw
 
     def _read_migrated_boolean_parameter(self, field, legacy_field, default=False, extra_truthy=()):
         raw = Parameters.get(field, "").strip()
@@ -244,7 +273,7 @@ class BasePlugin:
         pin       = self._read_gateway_pin()
         local_ip  = self._read_local_ip()
         port    = self._read_int_parameter("Port", 8443, 1, 65535)
-        mode4   = Parameters.get("Mode4", "LocalIP")
+        mode4   = str(self._read_migrated_parameter("ConnectionMode", "Mode4", "LocalIP"))
 
         if mode4 == "LocalIP":
             # Address holds the IP address in Local IP mode
@@ -410,7 +439,7 @@ class BasePlugin:
         return bool(pin and pin != "1234-1234-1234")
 
     def _reset_token_requested(self):
-        return str(Parameters.get("Mode1", "false")).lower() == "true"
+        return str(self._read_migrated_parameter("ResetToken", "Mode1", "false")).lower() == "true"
 
     def _ensure_web_login(self):
         if not self.tahoma.logged_in:

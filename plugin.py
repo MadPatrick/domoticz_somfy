@@ -7,10 +7,10 @@
 #
 ###################################################################################
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.3.6" externallink="https://github.com/MadPatrick/somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.4.0" externallink="https://github.com/MadPatrick/somfy">
     <description>
         <h2>Somfy TaHoma / Connexoon</h2>
-        <p><strong>Version:</strong> 5.3.6</p>
+        <p><strong>Version:</strong> 5.4.0</p>
         <p>Connects Domoticz to a Somfy TaHoma or Connexoon gateway through the local API or legacy web API.</p>
         <h3>Features</h3>
         <ul>
@@ -36,8 +36,8 @@
                 <option label="Local IP" value="LocalIP" default="true"/>
             </options>
         </param>
-        <param field="Address" label="Gateway PIN" width="175px" required="true" default="1234-1234-1234"/>
-        <param field="Mode3" label="Local IP address" width="175px" default=""/>
+        <param field="Gateway" label="Gateway PIN" width="175px" required="true" default="1234-1234-1234"/>
+        <param field="Address" label="Local IP address" width="175px" default=""/>
         <param field="Port" label="Gateway port" width="100px" required="true" default="8443"/>
         <param field="Mode2" label="Local hub CA Certificate Path (optional, leave empty to disable verification)" width="300px" required="false" default=""/>
         <param field="Mode1" label="Reset local API token" width="100px">
@@ -162,6 +162,33 @@ class BasePlugin:
             )
             return default
 
+    def _read_gateway_pin(self):
+        """Gateway PIN: the 'Gateway' field is new, so it falls back to the
+        value already stored under the old 'Address' field name (which used
+        to hold the PIN) for hardware configured before this rename."""
+        raw = Parameters.get("Gateway", "").strip()
+        if raw:
+            return raw
+        return Parameters.get("Address", "").strip()
+
+    def _read_local_ip(self):
+        """Local IP address: the 'Address' field name is reused here, but for
+        hardware configured before this rename the 'Address' column still
+        holds the *old* Gateway PIN value (e.g. '1234-1234-1234'), not an IP -
+        that column is only ever re-saved with the new meaning once someone
+        opens and saves this hardware's settings again. So the current
+        'Address' value is only trusted when it actually parses as an IP
+        address; otherwise fall back to the old 'Mode3' field, which is
+        where the local IP used to be stored."""
+        raw = Parameters.get("Address", "").strip()
+        if raw:
+            try:
+                ipaddress.ip_address(raw)
+                return raw
+            except ValueError:
+                pass
+        return Parameters.get("Mode3", "").strip()
+
     def _read_config_int(self, key, raw, default, minimum=None, maximum=None):
         try:
             value = int(raw)
@@ -213,25 +240,25 @@ class BasePlugin:
         self.enabled = True
 
         # --- Connect to Tahoma/Connexoon box ---
-        pin     = Parameters.get("Address", "").strip()
-        mode3   = Parameters.get("Mode3", "").strip()
+        pin       = self._read_gateway_pin()
+        local_ip  = self._read_local_ip()
         port    = self._read_int_parameter("Port", 8443, 1, 65535)
         mode4   = Parameters.get("Mode4", "LocalIP")
 
         if mode4 == "LocalIP":
-            # Mode3 holds the IP address in Local IP mode
-            if not mode3:
+            # Address holds the IP address in Local IP mode
+            if not local_ip:
                 Domoticz.Error("Local IP mode: no IP address set in 'Local IP Address' field. Plugin cannot start.")
                 return False
             try:
-                ipaddress.ip_address(mode3)
+                ipaddress.ip_address(local_ip)
             except ValueError:
-                Domoticz.Error(f"Invalid IP address in 'Local IP Address' field: '{mode3}'. Plugin cannot start.")
+                Domoticz.Error(f"Invalid IP address in 'Local IP Address' field: '{local_ip}'. Plugin cannot start.")
                 return False
-            self.tahoma = SomfyBox(None, port, ip=mode3, verify=self._tls_verify_option())
+            self.tahoma = SomfyBox(None, port, ip=local_ip, verify=self._tls_verify_option())
             self.local       = True
             self.local_ip_mode = True
-            Domoticz.Log(f"Local IP connection configured: {mode3}:{port}")
+            Domoticz.Log(f"Local IP connection configured: {local_ip}:{port}")
         elif mode4 == "Local":
             self.tahoma = SomfyBox(pin, port, verify=self._tls_verify_option())
             self.local       = True
@@ -414,7 +441,7 @@ class BasePlugin:
         Domoticz.Log("Trying to reconnect/re-login to Tahoma...")
         try:
             if self.local:
-                pin = Parameters.get("Address", "").strip()
+                pin = self._read_gateway_pin()
                 confToken = getConfigItem('token', '0')
                 if confToken not in (None, "", "0") and not self._reset_token_requested():
                     self.tahoma.token = confToken

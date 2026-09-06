@@ -39,19 +39,13 @@
         <param field="Gateway" label="Gateway PIN" width="175px" required="true" default="1234-1234-1234"/>
         <param field="Address" label="Local IP address" width="175px" default=""/>
         <param field="Port" label="Gateway port" width="100px" required="true" default="8443"/>
-        <param field="Mode2" label="Local hub CA Certificate Path (optional, leave empty to disable verification)" width="300px" required="false" default=""/>
         <param field="Mode1" label="Reset local API token" width="100px">
             <options>
                 <option label="No" value="false" default="true"/>
                 <option label="Yes" value="true" />
             </options>
         </param>
-        <param field="Mode6" label="Debug logging" width="100px">
-            <options>
-                <option label="On" value="Debug"/>
-                <option label="Off" value="Normal" default="true"/>
-            </options>
-        </param>
+        <param field="EnableDebug" type="boolean" label="Debug" default="false"/>
     </params>
 </plugin>
 """
@@ -162,6 +156,13 @@ class BasePlugin:
             )
             return default
 
+    def _read_migrated_boolean_parameter(self, field, legacy_field, default=False, extra_truthy=()):
+        raw = Parameters.get(field, "").strip()
+        if not raw:
+            raw = Parameters.get(legacy_field, "")
+        truthy = {"true", "1", "yes", "on"} | {v.lower() for v in extra_truthy}
+        return str(raw).strip().lower() in truthy
+
     def _read_gateway_pin(self):
         """Gateway PIN: the 'Gateway' field is new, so it falls back to the
         value already stored under the old 'Address' field name (which used
@@ -212,7 +213,7 @@ class BasePlugin:
         Domoticz.Log(f"Starting Plugin version {Parameters['Version']}")
 
         # --- Logging setup ---
-        if Parameters.get("Mode6") == "Debug":
+        if self._read_migrated_boolean_parameter("EnableDebug", "Mode6", False, extra_truthy=("Debug",)):
             Domoticz.Debugging(2)
             logging.basicConfig(
                 format='%(asctime)s - %(levelname)-8s - %(filename)-18s - %(message)s',
@@ -255,12 +256,12 @@ class BasePlugin:
             except ValueError:
                 Domoticz.Error(f"Invalid IP address in 'Local IP Address' field: '{local_ip}'. Plugin cannot start.")
                 return False
-            self.tahoma = SomfyBox(None, port, ip=local_ip, verify=self._tls_verify_option())
+            self.tahoma = SomfyBox(None, port, ip=local_ip)
             self.local       = True
             self.local_ip_mode = True
             Domoticz.Log(f"Local IP connection configured: {local_ip}:{port}")
         elif mode4 == "Local":
-            self.tahoma = SomfyBox(pin, port, verify=self._tls_verify_option())
+            self.tahoma = SomfyBox(pin, port)
             self.local       = True
             self.local_ip_mode = False
             Domoticz.Log(f"Local PIN connection configured: {pin}.local:{port}")
@@ -410,14 +411,6 @@ class BasePlugin:
 
     def _reset_token_requested(self):
         return str(Parameters.get("Mode1", "false")).lower() == "true"
-
-    def _tls_verify_option(self):
-        """Return the user-configured CA certificate path (Mode2) for the
-        local hub's TLS verification, or False to keep the historical
-        behavior of skipping certificate verification (the TaHoma/Connexoon
-        box uses a self-signed certificate by default)."""
-        value = Parameters.get("Mode2", "").strip()
-        return value if value else False
 
     def _ensure_web_login(self):
         if not self.tahoma.logged_in:

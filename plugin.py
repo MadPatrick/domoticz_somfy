@@ -7,10 +7,10 @@
 #
 ###################################################################################
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.4.0" externallink="https://github.com/MadPatrick/somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.4.1" externallink="https://github.com/MadPatrick/somfy">
     <description>
         <h2>Somfy TaHoma / Connexoon</h2>
-        <p><strong>Version:</strong> 5.4.0</p>
+        <p><strong>Version:</strong> 5.4.1</p>
         <p>Connects Domoticz to a Somfy TaHoma or Connexoon gateway through the local API or legacy web API.</p>
         <h3>Features</h3>
         <ul>
@@ -79,8 +79,6 @@ from tahoma_local import SomfyBox
 import utils
 import urllib.request
 import ipaddress
-import threading
-import queue
 
 _CONNECTION_DEVICE_ID = "connection_indicator"
 
@@ -147,13 +145,6 @@ class BasePlugin:
         # can mirror update_devices_status()'s device-class-aware inversion.
         self._device_classes = {}
 
-        # Background poll-cycle worker (converts the blocking onHeartbeat
-        # polling cycle to async): guards against overlapping fetches and
-        # hands results back to the main thread for Devices[...] updates.
-        self._fetch_lock = threading.Lock()
-        self._fetch_in_progress = False
-        self._result_queue = queue.Queue()
-
     def _read_int_parameter(self, field, default, minimum=None, maximum=None):
         raw = Parameters.get(field, "")
         if raw is None or str(raw).strip() == "":
@@ -193,13 +184,29 @@ class BasePlugin:
         return str(raw).strip().lower() in truthy
 
     def _read_gateway_pin(self):
-        """Gateway PIN: the 'Gateway' field is new, so it falls back to the
-        value already stored under the old 'Address' field name (which used
-        to hold the PIN) for hardware configured before this rename."""
-        raw = Parameters.get("Gateway", "").strip()
-        if raw:
-            return raw
-        return Parameters.get("Address", "").strip()
+        """Return the configured Gateway PIN with safe 5.3.x -> 5.4.x migration.
+
+        In 5.3.x the PIN lived in the reserved Address field. In 5.4.0 a new
+        Gateway setting was introduced with the placeholder 1234-1234-1234.
+        Domoticz can expose that default before the new setting has actually
+        been filled in, which previously prevented the real legacy Address
+        PIN from being used. Prefer a real new PIN, otherwise use a legacy
+        Address value only when it is not an IP address.
+        """
+        placeholder = "1234-1234-1234"
+        new_pin = str(Parameters.get("Gateway", "") or "").strip()
+        legacy_address = str(Parameters.get("Address", "") or "").strip()
+
+        if new_pin and new_pin != placeholder:
+            return new_pin
+
+        if legacy_address and legacy_address != placeholder:
+            try:
+                ipaddress.ip_address(legacy_address)
+            except ValueError:
+                return legacy_address
+
+        return new_pin
 
     def _read_local_ip(self):
         """Local IP address: the 'Address' field name is reused here, but for
@@ -320,12 +327,12 @@ class BasePlugin:
             confToken = getConfigItem('token', '0')
 
             if self.local_ip_mode:
-                # In Local IP mode the PIN (Address field) is still available for token generation via web API.
+                # In Local IP mode the PIN is still available for token generation via web API.
                 if confToken == '0' or self._reset_token_requested():
                     if not self._valid_pin(pin):
                         Domoticz.Error(
-                            "Local IP mode: no stored token and no valid Gateway PIN in Address field. "
-                            "Please enter the Gateway PIN in the Address field so a token can be generated."
+                            "Local IP mode: no stored token and no valid Gateway PIN. "
+                            "Please enter the Gateway PIN in the Gateway PIN field so a token can be generated."
                         )
                         self.enabled = False
                         return False
@@ -340,8 +347,8 @@ class BasePlugin:
                 if confToken == '0' or self._reset_token_requested():
                     if not self._valid_pin(pin):
                         Domoticz.Error(
-                            "Local PIN mode: no stored token and no valid Gateway PIN in Address field. "
-                            "Please enter the Gateway PIN in the Address field so a token can be generated."
+                            "Local PIN mode: no stored token and no valid Gateway PIN. "
+                            "Please enter the Gateway PIN in the Gateway PIN field so a token can be generated."
                         )
                         self.enabled = False
                         return False
@@ -369,8 +376,8 @@ class BasePlugin:
                 if self.local_ip_mode:
                     if not pin or pin == "1234-1234-1234":
                         Domoticz.Error(
-                            "Local IP mode: stored token rejected and no valid Gateway PIN in Address field. "
-                            "Please enter the Gateway PIN in Address and set Reset token to True."
+                            "Local IP mode: stored token rejected and no valid Gateway PIN. "
+                            "Please enter the Gateway PIN and set Reset token to Yes."
                         )
                         self.enabled = False
                         return False
@@ -743,15 +750,6 @@ class BasePlugin:
         if not self.enabled:
             return False
 
-        # Apply results of any poll cycle the background worker completed
-        # since the last tick - main thread, safe to touch Devices[...] here.
-        while True:
-            try:
-                result = self._result_queue.get_nowait()
-            except queue.Empty:
-                break
-            self._apply_poll_result(result)
-
         self._flush_pending_commands()
 
         today = datetime.datetime.now().day
@@ -830,111 +828,71 @@ class BasePlugin:
         # Polling cycle
         #
         if self.runCounter <= 0 or self.heartbeat:
-            self._trigger_poll_cycle()
+            # Keep all DomoticzEx/plugin activity on the Domoticz callback
+            # thread. Native Python worker threads can be routed through the
+            # wrong plugin interpreter on older Domoticz/Python 3.11 builds,
+            # resulting in a null/invalid Devices dictionary in FindDevice.
+            filtered_devices = None
+
+            try:
+                if self.local:
+                    filtered_devices = self.tahoma.get_devices()
+                else:
+                    if not self.tahoma.logged_in:
+                        self.tahoma.tahoma_login(
+                            str(Parameters["Username"]),
+                            str(Parameters["Password"])
+                        )
+                    filtered_devices = self.tahoma.get_devices()
+
+                if self.connected is False:
+                    Domoticz.Log("Connection restored")
+                    if self.local:
+                        try:
+                            self.tahoma.register_listener()
+                            Domoticz.Log("Listener re-registered after connection restore")
+                        except Exception as e:
+                            Domoticz.Error(f"Failed to re-register listener: {e}")
+
+                self.connected = True
+                self._last_error = ""
+                self._last_connected_time = datetime.datetime.now()
+                self._login_fail_count = 0
+
+                if filtered_devices is not None:
+                    self.update_devices_status(
+                        utils.filter_states(filtered_devices)
+                    )
+
+                self.update_connection_device(True)
+
+            except Exception as e:
+                msg = str(e).lower()
+
+                if "no route to host" in msg:
+                    short = "No route to host"
+                elif "connection refused" in msg:
+                    short = "Connection refused"
+                elif "timed out" in msg:
+                    short = "Connection timed out"
+                else:
+                    short = str(e)
+
+                if self.connected is True or self.connected is None:
+                    Domoticz.Error(f"Communication lost: {short}")
+
+                self.connected = False
+                self._last_error = short
+                self.update_connection_device(False)
+
+                self._login_fail_count += 1
+                if self._login_fail_count >= self._max_login_failures:
+                    self._do_reconnect()
+
             self.runCounter = interval
             self.heartbeat = False
 
         return True
-
-    def _trigger_poll_cycle(self):
-        """Starts the background worker for one Tahoma poll cycle (get_devices,
-        login, listener re-registration, reconnect-on-failure). Runs on the
-        main thread; only starts a thread and returns immediately so the
-        blocking network I/O never stalls onHeartbeat."""
-        with self._fetch_lock:
-            if self._fetch_in_progress:
-                Domoticz.Debug("Tahoma poll already in progress, skipping this heartbeat trigger.")
-                return
-            self._fetch_in_progress = True
-
-        threading.Thread(target=self._poll_worker, daemon=True).start()
-
-    def _poll_worker(self):
-        """Runs on a background thread. Only performs blocking network I/O
-        (get_devices/login/register_listener/_do_reconnect - none of which
-        touch Devices[...]) and hands the result back through
-        self._result_queue. Devices[...] updates happen in
-        _apply_poll_result(), on the main thread, from onHeartbeat."""
-        try:
-            if self.local:
-                filtered_devices = self.tahoma.get_devices()
-            else:
-                if not self.tahoma.logged_in:
-                    self.tahoma.tahoma_login(
-                        str(Parameters["Username"]),
-                        str(Parameters["Password"])
-                    )
-                filtered_devices = self.tahoma.get_devices()
-
-            listener_reregistered = False
-            if self.connected is False and self.local:
-                try:
-                    self.tahoma.register_listener()
-                    listener_reregistered = True
-                except Exception as e:
-                    Domoticz.Error(f"Failed to re-register listener: {e}")
-
-            self._login_fail_count = 0
-            self._result_queue.put(("ok", filtered_devices, listener_reregistered))
-
-        except Exception as e:
-
-            msg = str(e).lower()
-
-            if "no route to host" in msg:
-                short = "No route to host"
-            elif "connection refused" in msg:
-                short = "Connection refused"
-            elif "timed out" in msg:
-                short = "Connection timed out"
-            else:
-                short = str(e)
-
-            self._login_fail_count += 1
-
-            if self._login_fail_count >= self._max_login_failures:
-                self._do_reconnect()
-
-            self._result_queue.put(("error", short))
-
-        finally:
-            with self._fetch_lock:
-                self._fetch_in_progress = False
-
-    def _apply_poll_result(self, result):
-        """Applies one _poll_worker result. Main thread only (called from
-        onHeartbeat) - safe to touch Devices[...] here."""
-        kind = result[0]
-
-        if kind == "ok":
-            _, filtered_devices, listener_reregistered = result
-
-            if self.connected is False:
-                Domoticz.Log("Connection restored")
-                if listener_reregistered:
-                    Domoticz.Log("Listener re-registered after connection restore")
-
-            self.connected = True
-            self._last_error = ""
-            self._last_connected_time = datetime.datetime.now()
-
-            if filtered_devices is not None:
-                self.update_devices_status(
-                    utils.filter_states(filtered_devices)
-                )
-
-            self.update_connection_device(True)
-
-        else:
-            _, short = result
-
-            if self.connected is True or self.connected is None:
-                Domoticz.Error(f"Communication lost: {short}")
-
-            self.connected = False
-            self._last_error = short
-
-            self.update_connection_device(False)
 
 
     def update_devices_status(self, Updated_devices):

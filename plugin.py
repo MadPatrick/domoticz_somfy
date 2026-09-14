@@ -7,10 +7,10 @@
 #
 ###################################################################################
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.4.3" externallink="https://github.com/MadPatrick/somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.4.4" externallink="https://github.com/MadPatrick/somfy">
     <description>
         <h2>Somfy TaHoma / Connexoon</h2>
-        <p><strong>Version:</strong> 5.4.3</p>
+        <p><strong>Version:</strong> 5.4.4</p>
         <p>Connects Domoticz to a Somfy TaHoma or Connexoon gateway through the local API or legacy web API.</p>
         <h3>Features</h3>
         <ul>
@@ -139,11 +139,6 @@ class BasePlugin:
         # Login failure tracking / auto-reconnect
         self._login_fail_count = 0
         self._max_login_failures = 3  # number of consecutive failures before a reconnect is attempted
-
-        # deviceURL -> uiClass (e.g. "Awning", "RollerShutter"), populated in
-        # create_devices() for every device Tahoma reports, so _dispatch_command
-        # can mirror update_devices_status()'s device-class-aware inversion.
-        self._device_classes = {}
 
     def _read_int_parameter(self, field, default, minimum=None, maximum=None):
         raw = Parameters.get(field, "")
@@ -645,27 +640,14 @@ class BasePlugin:
                 commands["name"] = "stop"
             elif "Set Level" in Command:
                 commands["name"] = "setClosure"
-                # Mirror update_devices_status()'s read-side mapping: Awning
-                # devices report core:ClosureState/DeploymentState directly
-                # (no inversion), everything else inverted. Sending the
-                # opposite convention here made Domoticz redisplay 100-Level
-                # as soon as the next state update came in.
-                # Read from the durable Options marker on Unit 1 first - it
-                # survives even when self._device_classes never got populated
-                # this run (e.g. a failed startup get_devices() call left it
-                # empty); self._device_classes is only a fallback for a device
-                # created before this marker existed and not yet refreshed.
-                try:
-                    device_class = (Devices[DeviceId].Units[1].Options or {}).get("DeviceClass")
-                except (KeyError, AttributeError):
-                    device_class = None
-                if device_class is None:
-                    device_class = self._device_classes.get(DeviceId)
-                Domoticz.Debug(f"_dispatch_command: setClosure for {DeviceId}: resolved device_class='{device_class}', requested Level={Level}")
-                if device_class == "Awning":
-                    tmp = max(min(int(Level), 100), 0)
-                else:
-                    tmp = max(100 - int(Level), 0)
+                # Reverted to the pre-5.3.6 behavior at the user's request:
+                # always invert on send, Awning included. The device-class-
+                # aware mapping (matching update_devices_status()'s read-side
+                # Awning special case) technically closed the loop for #100,
+                # but didn't match this Awning hardware's actual behavior in
+                # practice - the always-invert convention below is what the
+                # user wants back.
+                tmp = max(100 - int(Level), 0)
                 params.append(tmp)
                 commands["parameters"] = params
             else:
@@ -1029,27 +1011,8 @@ class BasePlugin:
 
             logging.debug("create_devices: check if need to create device: "+device["label"])
 
-            device_class = device["definition"]["uiClass"]
-            self._device_classes[device["deviceURL"]] = device_class
-
             if device["deviceURL"] in Devices:
                 logging.debug("create_devices: device bestaat al, overslaan: " + device["label"])
-                # Backfill/refresh the persistent DeviceClass marker on Unit 1
-                # (see _dispatch_command) for devices created before this
-                # marker existed, or if Somfy's class for it ever changes -
-                # self._device_classes above is only ever populated once
-                # per plugin start and is lost if a startup get_devices()
-                # call fails, so this Options marker is the durable source.
-                try:
-                    unit = Devices[device["deviceURL"]].Units[1]
-                    if (unit.Options or {}).get("DeviceClass") != device_class:
-                        # DomoticzEx's Unit.Update() takes no nValue/sValue/Options
-                        # kwargs - attributes are staged on the object first, then
-                        # Update(UpdateOptions=True) commits the Options change.
-                        unit.Options = {"DeviceClass": device_class}
-                        unit.Update(UpdateOptions=True)
-                except (KeyError, AttributeError) as e:
-                    logging.debug(f"create_devices: could not refresh DeviceClass marker for {device['deviceURL']}: {e}")
                 continue
 
             swtype = None
@@ -1081,16 +1044,11 @@ class BasePlugin:
 
             created_devices += 1
             Domoticz.Device(DeviceID=device["deviceURL"])
-            # DeviceClass on Unit 1 is a durable marker _dispatch_command reads
-            # to decide whether to invert Level on send (see there) - stored on
-            # the device itself so it survives even if self._device_classes
-            # never gets populated this run (e.g. a failed startup get_devices()).
-            unit1_options = {"DeviceClass": device_class}
             if device["definition"]["uiClass"] in ("VenetianBlind", "ExteriorVenetianBlind"):
-                Domoticz.Unit(Name=device["label"] + " up/down", Unit=1, Type=deviceType, Subtype=subtype2, Switchtype=swtype, DeviceID=device["deviceURL"], Used=used, Options=unit1_options).Create()
+                Domoticz.Unit(Name=device["label"] + " up/down", Unit=1, Type=deviceType, Subtype=subtype2, Switchtype=swtype, DeviceID=device["deviceURL"], Used=used).Create()
                 Domoticz.Unit(Name=device["label"] + " orientation", Unit=2, Type=244, Subtype=73, Switchtype=swtype, DeviceID=device["deviceURL"], Used=used).Create()
             else:
-                Domoticz.Unit(Name=device["label"], Unit=1, Type=deviceType, Subtype=subtype2, Switchtype=swtype, DeviceID=device["deviceURL"], Used=used, Options=unit1_options).Create()
+                Domoticz.Unit(Name=device["label"], Unit=1, Type=deviceType, Subtype=subtype2, Switchtype=swtype, DeviceID=device["deviceURL"], Used=used).Create()
 
             if self._device_supports_command(device, "my"):
                 Domoticz.Unit(Name=device["label"] + " my", Unit=3, Type=244, Subtype=73, Switchtype=9, DeviceID=device["deviceURL"], Used=True).Create()

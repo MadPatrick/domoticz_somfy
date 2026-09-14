@@ -7,10 +7,10 @@
 #
 ###################################################################################
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.4.2" externallink="https://github.com/MadPatrick/somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.4.3" externallink="https://github.com/MadPatrick/somfy">
     <description>
         <h2>Somfy TaHoma / Connexoon</h2>
-        <p><strong>Version:</strong> 5.4.2</p>
+        <p><strong>Version:</strong> 5.4.3</p>
         <p>Connects Domoticz to a Somfy TaHoma or Connexoon gateway through the local API or legacy web API.</p>
         <h3>Features</h3>
         <ul>
@@ -1043,7 +1043,11 @@ class BasePlugin:
                 try:
                     unit = Devices[device["deviceURL"]].Units[1]
                     if (unit.Options or {}).get("DeviceClass") != device_class:
-                        unit.Update(nValue=unit.nValue, sValue=unit.sValue, Options={"DeviceClass": device_class})
+                        # DomoticzEx's Unit.Update() takes no nValue/sValue/Options
+                        # kwargs - attributes are staged on the object first, then
+                        # Update(UpdateOptions=True) commits the Options change.
+                        unit.Options = {"DeviceClass": device_class}
+                        unit.Update(UpdateOptions=True)
                 except (KeyError, AttributeError) as e:
                     logging.debug(f"create_devices: could not refresh DeviceClass marker for {device['deviceURL']}: {e}")
                 continue

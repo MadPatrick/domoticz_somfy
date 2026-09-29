@@ -7,10 +7,10 @@
 #
 ###################################################################################
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.4.4" externallink="https://github.com/MadPatrick/somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.4.5" externallink="https://github.com/MadPatrick/somfy">
     <description>
         <h2>Somfy TaHoma / Connexoon</h2>
-        <p><strong>Version:</strong> 5.4.4</p>
+        <p><strong>Version:</strong> 5.4.5</p>
         <p>Connects Domoticz to a Somfy TaHoma or Connexoon gateway through the local API or legacy web API.</p>
         <h3>Features</h3>
         <ul>
@@ -90,6 +90,10 @@ class BasePlugin:
 
     def __init__(self):
         self.enabled = False
+        # Tracks whether startup has completed far enough for DomoticzEx's
+        # Devices mapping to be used safely. Keep this separate from `enabled`,
+        # which controls heartbeat processing and connection recovery.
+        self.devices_ready = False
         self.heartbeat = False
         self.runCounter = 0
         self.command_data = None
@@ -241,6 +245,7 @@ class BasePlugin:
         Sets up logging, polling intervals, sunrise/sunset delays,
         and TEMP_DELAY / TEMP_TIME from config.txt.
         """
+        self.devices_ready = False
         Domoticz.Log(f"Starting Plugin version {Parameters['Version']}")
 
         # --- Logging setup ---
@@ -308,8 +313,13 @@ class BasePlugin:
             Domoticz.Error("Failed to login: " + str(exp))
             return False
 
-        # pin (Address) is used by setup_and_sync_devices for token management
-        self.setup_and_sync_devices(pin)
+        # pin (Address) is used by setup_and_sync_devices for token management.
+        # Only allow command dispatch after the complete device setup succeeded;
+        # touching Devices earlier makes DomoticzEx log native FindDevice errors.
+        if not self.setup_and_sync_devices(pin):
+            return False
+        self.devices_ready = True
+        return True
 
     def setup_and_sync_devices(self, pin):
         if not self.tahoma.logged_in:
@@ -487,6 +497,7 @@ class BasePlugin:
             Domoticz.Error(f"Reconnect failed, will try again next heartbeat: {e}")
 
     def onStop(self):
+        self.devices_ready = False
         logging.info("Plugin stopped")
         Domoticz.Log("Plugin stopped")
         self.heartbeat = False
@@ -598,28 +609,51 @@ class BasePlugin:
         for DeviceId, Unit, Command, Level, Hue, first_seen in pending:
             self._dispatch_command(DeviceId, Unit, Command, Level, Hue, first_seen=first_seen)
 
+    def _queue_command_for_retry(self, DeviceId, Unit, Command, Level, Hue, first_seen, not_ready_reason):
+        """Queue a command for retry (up to PENDING_COMMAND_MAX_AGE_SECS) instead
+        of dropping it - `first_seen` is None for a fresh command from Domoticz,
+        or the original queue timestamp when called from _flush_pending_commands."""
+        now = time.time()
+        queued_since = first_seen if first_seen is not None else now
+        if now - queued_since > self.PENDING_COMMAND_MAX_AGE_SECS:
+            Domoticz.Error(
+                f"Giving up on command for DeviceId {DeviceId}/Unit {Unit}: "
+                f"{not_ready_reason} after {int(now - queued_since)}s."
+            )
+            return
+        self._pending_commands.append((DeviceId, Unit, Command, Level, Hue, queued_since))
+        if first_seen is None:
+            Domoticz.Status(
+                f"{not_ready_reason}; command for DeviceId {DeviceId}/Unit {Unit} queued for retry."
+            )
+
     def _dispatch_command(self, DeviceId, Unit, Command, Level, Hue, first_seen):
         """Resolve DeviceId/Unit and execute the command. If Devices isn't ready
-        yet, queue it for retry (up to PENDING_COMMAND_MAX_AGE_SECS) instead of
-        dropping it - `first_seen` is None for a fresh command from Domoticz,
-        or the original queue timestamp when called from _flush_pending_commands."""
+        yet, queue it for retry instead of dropping it."""
+        if not self.devices_ready:
+            # Domoticz can replay a queued/scene command immediately when the
+            # plugin process starts, before onStart() has run at all. Checking
+            # our dedicated readiness flag here - instead of touching Devices[...]
+            # straight away - avoids Domoticz's own C++ layer logging a
+            # "Devices dictionary null or not valid in 'FindDevice'" error for
+            # every such attempt (that message is logged by Domoticz itself,
+            # before our except clause below even runs, and can't be
+            # suppressed from here).
+            self._queue_command_for_retry(
+                DeviceId, Unit, Command, Level, Hue, first_seen,
+                "Plugin still starting up"
+            )
+            return False
+
         try:
             device_name = Devices[DeviceId].Units[Unit].Name
         except NameError:
-            now = time.time()
-            queued_since = first_seen if first_seen is not None else now
-            if now - queued_since > self.PENDING_COMMAND_MAX_AGE_SECS:
-                Domoticz.Error(
-                    f"Giving up on command for DeviceId {DeviceId}/Unit {Unit}: "
-                    f"Devices dictionary still not available after {int(now - queued_since)}s."
-                )
-                return False
-            self._pending_commands.append((DeviceId, Unit, Command, Level, Hue, queued_since))
-            if first_seen is None:
-                Domoticz.Status(
-                    f"Devices dictionary not available yet (plugin still starting up?); "
-                    f"command for DeviceId {DeviceId}/Unit {Unit} queued for retry."
-                )
+            # Residual fallback: self.enabled was True but Devices still
+            # wasn't ready. Same queue-for-retry handling as above.
+            self._queue_command_for_retry(
+                DeviceId, Unit, Command, Level, Hue, first_seen,
+                "Devices dictionary not available yet (plugin still starting up?)"
+            )
             return False
         except KeyError:
             Domoticz.Error(f"Unknown DeviceId/Unit {DeviceId}/{Unit} in onCommand, ignoring command.")

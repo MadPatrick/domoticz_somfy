@@ -14,6 +14,15 @@ import urllib3
 from contextlib import contextmanager
 
 
+def _masked_headers(headers):
+    """Return response/request headers with authentication data redacted."""
+    masked = dict(headers)
+    for key in list(masked):
+        if key.lower() in ("authorization", "cookie", "set-cookie"):
+            masked[key] = "***"
+    return masked
+
+
 @contextmanager
 def _suppress_insecure_warning():
     """Locally suppress urllib3's InsecureRequestWarning for requests to the
@@ -62,7 +71,11 @@ class TahomaWebApi:
             self.__expiry_date = datetime.datetime.now() + datetime.timedelta(days=self.logged_in_expiry_days)
             logging.info("Tahoma authentication succeeded, login valid until " + self.__expiry_date.strftime("%Y-%m-%d %H:%M:%S"))
             self.cookie = response.cookies
-            logging.debug("login: cookies: '"+ str(response.cookies)+"', headers: '"+str(response.headers)+"'")
+            logging.debug(
+                "login: cookie present = %s, headers = %s",
+                bool(response.cookies),
+                _masked_headers(response.headers),
+            )
 
         elif ((response.status_code == 401) or (response.status_code == 400)):
             strData = Data["error"]
@@ -89,7 +102,7 @@ class TahomaWebApi:
 
     def generate_token(self, pin):
         url_gen = "/enduser-mobile-web/enduserAPI/config/"+pin+"/local/tokens/generate"
-        logging.debug("generate token: url_gen = '" + url_gen + "'")
+        logging.debug("generate token: requesting a new local API token")
         logging.debug("generate token: cookie present = '" + str(bool(self.cookie)) + "'")
         response = requests.get(self.base_url_web + url_gen, headers=self.headers_json, cookies=self.cookie, timeout=self.timeout)
         logging.debug("generate token: response = '" + str(response) + "'")
@@ -98,12 +111,12 @@ class TahomaWebApi:
             data = utils.response_json(response, "generate token")
             self.__token = data['token']
             self.headers_with_token["Authorization"] = "Bearer " + str(self.__token)
-            logging.debug("succeeded to generate token: " + str(self.token))
+            logging.debug("succeeded to generate a local API token")
             return data
         elif ((response.status_code == 401) or (response.status_code == 400)):
             self.__logged_in = False
             self.cookie = None
-            logging.debug("generate token failed: status = '" + str(response.status_code) + "', body = '" + str(response.text) + "'")
+            logging.debug("generate token failed: status = '" + str(response.status_code) + "'")
             logging.error("failed to generate token")
             raise exceptions.LoginFailure("failed to generate token")
         else:
@@ -126,10 +139,10 @@ class TahomaWebApi:
         data_act = {"label": "Domoticz token", "token": token, "scope": "devmode"}
         response = requests.post(self.base_url_web + url_act, headers=self.headers_json, json=data_act, cookies=self.cookie, timeout=self.timeout)
         data = utils.response_json(response, "activate token")
-        logging.debug("activate_token: response: "+str(data))
+        logging.debug("activate_token: response status: " + str(response.status_code))
 
         if response.status_code == 200:
-            logging.debug("succeeded to activate token: " + str(self.token))
+            logging.debug("succeeded to activate the local API token")
             return data
         elif ((response.status_code == 401) or (response.status_code == 400)):
             self.__logged_in = False
@@ -146,7 +159,7 @@ class TahomaWebApi:
         data = utils.response_json(response, "get tokens")
 
         if response.status_code == 200:
-            logging.debug("succeeded to get tokens: " + str(data))
+            logging.debug("succeeded to get token metadata")
         elif ((response.status_code == 401) or (response.status_code == 400)):
             self.__logged_in = False
             self.cookie = None
@@ -160,7 +173,7 @@ class TahomaWebApi:
         data = utils.response_json(response, "delete token")
 
         if response.status_code == 200:
-            logging.debug("succeeded to delete token: " + str(data))
+            logging.debug("succeeded to delete the local API token")
         elif ((response.status_code == 401) or (response.status_code == 400)):
             self.__logged_in = False
             self.cookie = None
@@ -207,7 +220,7 @@ class SomfyBox(TahomaWebApi):
         logging.debug(response)
         if response.status_code == 200:
             data = utils.response_json(response, "get gateways")
-            logging.debug("succeeded to get local API gateways: " + str(data))
+            logging.debug("succeeded to get local API gateway information")
         else:
             utils.handle_response(response, "get gateways")
             data = {}

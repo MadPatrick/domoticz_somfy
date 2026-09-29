@@ -33,12 +33,13 @@ When upgrading to version 3.x, it is required to first remove all devices attach
 As of version 4.x the plugin supports local access to the Somfy box for both Tahoma and Connexoon. Additional installation steps mentioned below.
 
 ### Version 5.x
-The latest plugin version **5.3.2** introduces:
+The current plugin version is **5.4.6**. Version 5.x includes:
 
 - **Extended device support**  
   - Full venetian blinds: separate units for up/down and orientation.  
   - Exterior venetian blinds supported.  
-  - Awning devices handled correctly (no inverted percentages).  
+  - Compatible position handling for roller shutters, screens and awnings.
+  - Open/closed state updates for gates, garage doors and windows.
   - Luminance sensors supported.
 
 - **Day/Night polling**  
@@ -51,6 +52,7 @@ The latest plugin version **5.3.2** introduces:
 
 - **Local API & token management**  
   - Automatic token generation & storage for Local API.  
+  - Once a local token is stored, Local IP and Local PIN mode can start without contacting the Somfy cloud.
   - Web API still available but deprecated.  
 
 - **Configuration via `config.txt`**  
@@ -63,6 +65,8 @@ The latest plugin version **5.3.2** introduces:
 
 - **Improved logging & error handling**  
   - Debug logging toggled via the **Debug logging** field in the hardware settings.  
+  - Passwords, gateway PINs, cookies and bearer tokens are redacted from debug output.
+  - Commands received before Domoticz has initialized the device dictionary are queued for retry.
   - Only logs meaningful changes.  
   - Better handling of API and command errors. 
 
@@ -113,6 +117,7 @@ Activating this mode will enable a local API on your TaHoma and Connexoon box. B
 **Option A – Direct IP (no DNS needed):**  
 Select **Local IP** in the **Connection** field, fill in the Gateway PIN in the **Gateway PIN** field, and fill in the IP address of your Somfy box in the **Local IP Address** field, for example `192.168.1.100`.  
 The plugin will automatically generate and store a token on first start using the PIN and the Somfy web API.
+Later starts use the stored token directly; cloud access is only needed again when the token must be generated or reset.
 
 **Option B – PIN with DNS / hosts entry:**  
 Select **Local PIN** in the **Connection** field. Enter the Gateway PIN in the **Gateway PIN** field.  
@@ -141,10 +146,10 @@ Add the hardware to your Domoticz system and fill in the required fields
 
 | **Field** | **Input** |
 |--------------|--------------|
-| Username | Somfy account login |
-| Password | Somfy account password |
+| Username | Somfy account login; required for Web mode and when a local token must be generated or reset |
+| Password | Somfy account password; required for Web mode and when a local token must be generated or reset |
 | Connection | **Web** – via Somfy web server; **Local PIN** – direct connection using Gateway PIN (DNS required); **Local IP** – direct connection using IP address (no DNS required) |
-| Gateway PIN | Gateway PIN of your Somfy box (e.g. `1234-1234-1234`). Used for all connection modes to generate/activate the local API token. |
+| Gateway PIN | Gateway PIN of your Somfy box (e.g. `1234-1234-1234`). Used in local modes to generate/activate the local API token. |
 | Local IP Address | Only for **Local IP** mode: IP address of your Somfy box (e.g. `192.168.1.100`). Leave empty for Web or Local PIN mode. |
 | Reset token | `False` by default; set `True` if token errors occur |
 | Portnumber | Default `8443` |
@@ -168,9 +173,9 @@ Remove the # for the setting you want to use in config.txt
 
 🔄 **Reloading config.txt**
 
-The plugin automatically reloads config.txt during runtime
-No Domoticz restart required.
-Invalid or missing values will fall back to default settings
+The plugin loads `config.txt` at startup and reloads it after the calendar day changes.
+No Domoticz restart is required, but runtime changes can take until the next daily reload.
+Invalid or missing values fall back to default settings.
 
 📌 Values from config.txt will override UI settings when defined.
 
@@ -220,6 +225,14 @@ cd domoticz/plugins/domoticz_somfy
 git pull
 ```
 And then either restart Domoticz or update the plugin on the Hardware page.
+
+## ✅ Development checks
+
+Run the regression tests from the plugin directory with:
+
+```bash
+python3 -m unittest discover -s tests -v
+```
 
 # 📚 References:
 - Web API description Tahoma: https://tahomalink.com/enduser-mobile-web/enduserAPI/doc

@@ -90,6 +90,10 @@ class BasePlugin:
 
     def __init__(self):
         self.enabled = False
+        # Tracks whether startup has completed far enough for DomoticzEx's
+        # Devices mapping to be used safely. Keep this separate from `enabled`,
+        # which controls heartbeat processing and connection recovery.
+        self.devices_ready = False
         self.heartbeat = False
         self.runCounter = 0
         self.command_data = None
@@ -241,6 +245,7 @@ class BasePlugin:
         Sets up logging, polling intervals, sunrise/sunset delays,
         and TEMP_DELAY / TEMP_TIME from config.txt.
         """
+        self.devices_ready = False
         Domoticz.Log(f"Starting Plugin version {Parameters['Version']}")
 
         # --- Logging setup ---
@@ -308,8 +313,13 @@ class BasePlugin:
             Domoticz.Error("Failed to login: " + str(exp))
             return False
 
-        # pin (Address) is used by setup_and_sync_devices for token management
-        self.setup_and_sync_devices(pin)
+        # pin (Address) is used by setup_and_sync_devices for token management.
+        # Only allow command dispatch after the complete device setup succeeded;
+        # touching Devices earlier makes DomoticzEx log native FindDevice errors.
+        if not self.setup_and_sync_devices(pin):
+            return False
+        self.devices_ready = True
+        return True
 
     def setup_and_sync_devices(self, pin):
         if not self.tahoma.logged_in:
@@ -487,6 +497,7 @@ class BasePlugin:
             Domoticz.Error(f"Reconnect failed, will try again next heartbeat: {e}")
 
     def onStop(self):
+        self.devices_ready = False
         logging.info("Plugin stopped")
         Domoticz.Log("Plugin stopped")
         self.heartbeat = False
@@ -619,10 +630,10 @@ class BasePlugin:
     def _dispatch_command(self, DeviceId, Unit, Command, Level, Hue, first_seen):
         """Resolve DeviceId/Unit and execute the command. If Devices isn't ready
         yet, queue it for retry instead of dropping it."""
-        if not self.enabled:
+        if not self.devices_ready:
             # Domoticz can replay a queued/scene command immediately when the
             # plugin process starts, before onStart() has run at all. Checking
-            # our own readiness flag here - instead of touching Devices[...]
+            # our dedicated readiness flag here - instead of touching Devices[...]
             # straight away - avoids Domoticz's own C++ layer logging a
             # "Devices dictionary null or not valid in 'FindDevice'" error for
             # every such attempt (that message is logged by Domoticz itself,

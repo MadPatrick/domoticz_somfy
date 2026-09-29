@@ -10,6 +10,16 @@ import listener
 
 import DomoticzEx as Domoticz
 
+
+def _masked_headers(headers):
+    """Return response/request headers with authentication data redacted."""
+    masked = dict(headers)
+    for key in list(masked):
+        if key.lower() in ("authorization", "cookie", "set-cookie"):
+            masked[key] = "***"
+    return masked
+
+
 class Tahoma:
     """class to interface with tahoma web API"""
     def __init__(self):
@@ -113,11 +123,8 @@ class Tahoma:
             )
             cookie_tmp = response.headers["Set-Cookie"]
             self.cookie = cookie_tmp[:cookie_tmp.index(';')]
-            safe_headers = dict(response.headers)
-            if "Set-Cookie" in safe_headers:
-                safe_headers["Set-Cookie"] = "***"
             logging.debug(
-                "login: cookies received, headers: '" + str(safe_headers) + "'"
+                "login: cookies received, headers: '" + str(_masked_headers(response.headers)) + "'"
             )
 
         elif response.status_code in (400, 401):
@@ -161,7 +168,7 @@ class Tahoma:
                 response = requests.get(url, headers=Headers, timeout=self.timeout)
                 logging.debug(
                     "get device response: url '" + str(response.url) +
-                    "' response headers: '" + str(response.headers) + "'"
+                    "' response headers: '" + str(_masked_headers(response.headers)) + "'"
                 )
                 if response.status_code != 200:
                     logging.error("get_devices: error during get devices, status: " + str(response.status_code))

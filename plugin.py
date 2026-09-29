@@ -7,10 +7,10 @@
 #
 ###################################################################################
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.4.5" externallink="https://github.com/MadPatrick/somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.4.6" externallink="https://github.com/MadPatrick/domoticz_somfy">
     <description>
         <h2>Somfy TaHoma / Connexoon</h2>
-        <p><strong>Version:</strong> 5.4.5</p>
+        <p><strong>Version:</strong> 5.4.6</p>
         <p>Connects Domoticz to a Somfy TaHoma or Connexoon gateway through the local API or legacy web API.</p>
         <h3>Features</h3>
         <ul>
@@ -245,6 +245,7 @@ class BasePlugin:
         Sets up logging, polling intervals, sunrise/sunset delays,
         and TEMP_DELAY / TEMP_TIME from config.txt.
         """
+        self.enabled = False
         self.devices_ready = False
         Domoticz.Log(f"Starting Plugin version {Parameters['Version']}")
 
@@ -274,7 +275,6 @@ class BasePlugin:
         self.runCounter = self.dayInterval
 
         self.last_config_day = datetime.datetime.now().day
-        self.enabled = True
 
         # --- Connect to Tahoma/Connexoon box ---
         pin       = self._read_gateway_pin()
@@ -300,18 +300,22 @@ class BasePlugin:
             self.tahoma = SomfyBox(pin, port)
             self.local       = True
             self.local_ip_mode = False
-            Domoticz.Log(f"Local PIN connection configured: {pin}.local:{port}")
+            Domoticz.Log(f"Local PIN connection configured on port {port}")
         else:
             self.tahoma = tahoma.Tahoma()
             self.local       = False
             self.local_ip_mode = False
             Domoticz.Log("Web connection configured (via Somfy cloud)")
 
-        try:
-            self._ensure_web_login()
-        except Exception as exp:
-            Domoticz.Error("Failed to login: " + str(exp))
-            return False
+        # Web mode always needs a cloud session. Local modes can start with an
+        # already-stored bearer token and only need the cloud when that token
+        # must be created or refreshed (handled by _refresh_local_token()).
+        if not self.local:
+            try:
+                self._ensure_web_login()
+            except Exception as exp:
+                Domoticz.Error("Failed to login: " + str(exp))
+                return False
 
         # pin (Address) is used by setup_and_sync_devices for token management.
         # Only allow command dispatch after the complete device setup succeeded;
@@ -319,10 +323,11 @@ class BasePlugin:
         if not self.setup_and_sync_devices(pin):
             return False
         self.devices_ready = True
+        self.enabled = True
         return True
 
     def setup_and_sync_devices(self, pin):
-        if not self.tahoma.logged_in:
+        if not self.local and not self.tahoma.logged_in:
             Domoticz.Error("TaHoma not logged in")
             return False
 
@@ -333,7 +338,7 @@ class BasePlugin:
 
             if self.local_ip_mode:
                 # In Local IP mode the PIN is still available for token generation via web API.
-                if confToken == '0' or self._reset_token_requested():
+                if confToken in (None, "", "0") or self._reset_token_requested():
                     if not self._valid_pin(pin):
                         Domoticz.Error(
                             "Local IP mode: no stored token and no valid Gateway PIN. "
@@ -345,11 +350,11 @@ class BasePlugin:
                     self._refresh_local_token(pin)
                     Domoticz.Log("Token created (LocalIP mode)")
                 else:
-                    logging.debug("found token in configuration (LocalIP mode): " + str(confToken))
+                    logging.debug("found token in configuration (LocalIP mode)")
                     self.tahoma.token = confToken
                     Domoticz.Log("Token present (LocalIP mode), loaded from configuration")
             else:
-                if confToken == '0' or self._reset_token_requested():
+                if confToken in (None, "", "0") or self._reset_token_requested():
                     if not self._valid_pin(pin):
                         Domoticz.Error(
                             "Local PIN mode: no stored token and no valid Gateway PIN. "
@@ -361,7 +366,7 @@ class BasePlugin:
                     self._refresh_local_token(pin)
                     Domoticz.Log("Token created")
                 else:
-                    logging.debug("found token in configuration: " + str(confToken))
+                    logging.debug("found token in configuration")
                     self.tahoma.token = confToken
                     Domoticz.Log("Token present, loaded from configuration")
 
@@ -369,8 +374,6 @@ class BasePlugin:
             self.tahoma.register_listener()
         except Exception as e:
             Domoticz.Error(f"Connection failed during startup: {e}")
-            # self.enabled = False
-            # return True  # was False
             self.connected = False
 
         # --- DEVICES OPHALEN ---
@@ -423,11 +426,20 @@ class BasePlugin:
             try:
                 gateways = self.tahoma.get_gateways()
                 self._gateway_info = utils.parse_gateway_info(gateways)
-                Domoticz.Log(
-                    "Gateway: {type_label} (id={gateway_id}) | Status: {connectivity} | "
-                    "FW: {protocol_version} | Mode: {mode}".format(**self._gateway_info)
-                )
-                logging.debug("Gateway info: " + str(self._gateway_info))
+                if self._gateway_info:
+                    Domoticz.Log(
+                        "Gateway: {type_label} | Status: {connectivity} | "
+                        "FW: {protocol_version} | Mode: {mode}".format(**self._gateway_info)
+                    )
+                    logging.debug(
+                        "Gateway info: type=%s, status=%s, firmware=%s, mode=%s",
+                        self._gateway_info.get("type_label", ""),
+                        self._gateway_info.get("connectivity", ""),
+                        self._gateway_info.get("protocol_version", ""),
+                        self._gateway_info.get("mode", ""),
+                    )
+                else:
+                    logging.debug("No gateway information returned by the local API")
             except Exception as e:
                 Domoticz.Error("Failed to get gateway info: " + str(e))
                 logging.error("Failed to get gateway info: " + str(e))
@@ -497,6 +509,7 @@ class BasePlugin:
             Domoticz.Error(f"Reconnect failed, will try again next heartbeat: {e}")
 
     def onStop(self):
+        self.enabled = False
         self.devices_ready = False
         logging.info("Plugin stopped")
         Domoticz.Log("Plugin stopped")
@@ -648,7 +661,7 @@ class BasePlugin:
         try:
             device_name = Devices[DeviceId].Units[Unit].Name
         except NameError:
-            # Residual fallback: self.enabled was True but Devices still
+            # Residual fallback: devices_ready was True but Devices still
             # wasn't ready. Same queue-for-retry handling as above.
             self._queue_command_for_retry(
                 DeviceId, Unit, Command, Level, Hue, first_seen,
@@ -976,7 +989,11 @@ class BasePlugin:
                         lumlevel = state["value"]
                         lumstatus_l = True
 
-                    elif state["name"] in ("core:OpenClosedPedestrianState", "core:OpenClosedPartialState"):
+                    elif state["name"] in (
+                        "core:OpenClosedState",
+                        "core:OpenClosedPedestrianState",
+                        "core:OpenClosedPartialState",
+                    ):
                         if state["value"] == "closed":
                             level = 0
                         elif state["value"] == "open":
@@ -1012,13 +1029,19 @@ class BasePlugin:
                         int_lumlevel = float(Devices[dev].Units[1].sValue or 0)
                     except (ValueError, TypeError):
                         int_lumlevel = 0
-                    if float(lumlevel) != int_lumlevel:
+                    try:
+                        new_lumlevel = float(lumlevel)
+                    except (ValueError, TypeError):
+                        Domoticz.Error(
+                            "Invalid luminance value for {}: {}".format(dev, lumlevel)
+                        )
+                        continue
+                    if new_lumlevel != int_lumlevel and new_lumlevel != 120000:
                         Domoticz.Status("Updating device : " + Devices[dev].Units[1].Name)
                         logging.info("Updating device : " + Devices[dev].Units[1].Name)
-                        if lumlevel not in (0, 120000):
-                            nValue = 3
-                            sValue = str(lumlevel)
-                            UpdateDevice(dev, 1, nValue, sValue)
+                        nValue = 3
+                        sValue = str(lumlevel)
+                        UpdateDevice(dev, 1, nValue, sValue)
 
                 num_updates += 1
 
@@ -1282,7 +1305,9 @@ def DumpConfigToLog():
 
 def _mask_secret(Key, Value):
     key = str(Key).lower()
-    if any(secret in key for secret in ("password", "token", "cookie", "authorization")):
+    if key == "gateway" or any(
+        secret in key for secret in ("password", "token", "cookie", "authorization", "pin")
+    ):
         return "***"
     return Value
 

@@ -7,10 +7,10 @@
 #
 ###################################################################################
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.4.6" externallink="https://github.com/MadPatrick/domoticz_somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.4.7" externallink="https://github.com/MadPatrick/domoticz_somfy">
     <description>
         <h2>Somfy TaHoma / Connexoon</h2>
-        <p><strong>Version:</strong> 5.4.6</p>
+        <p><strong>Version:</strong> 5.4.7</p>
         <p>Connects Domoticz to a Somfy TaHoma or Connexoon gateway through the local API or legacy web API.</p>
         <h3>Features</h3>
         <ul>
@@ -969,6 +969,14 @@ class BasePlugin:
                 lumstatus_l = False
                 lumlevel = 0
 
+                # A partially-open device reports OpenClosedState "open" next to
+                # its real position; the binary state must not overwrite it (an
+                # awning stopped at 25% would otherwise jump to 100%).
+                has_position = any(
+                    s.get("name") in ("core:ClosureState", "core:DeploymentState")
+                    for s in states
+                )
+
                 for state in states:
                     level = None
                     status_num = 0
@@ -993,7 +1001,7 @@ class BasePlugin:
                         "core:OpenClosedState",
                         "core:OpenClosedPedestrianState",
                         "core:OpenClosedPartialState",
-                    ):
+                    ) and not has_position:
                         if state["value"] == "closed":
                             level = 0
                         elif state["value"] == "open":

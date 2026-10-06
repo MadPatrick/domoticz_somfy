@@ -153,6 +153,7 @@ Add the hardware to your Domoticz system and fill in the required fields
 | Local IP Address | Only for **Local IP** mode: IP address of your Somfy box (e.g. `192.168.1.100`). Leave empty for Web or Local PIN mode. |
 | Reset token | `False` by default; set `True` if token errors occur |
 | Portnumber | Default `8443` |
+| Create 'my' devices | `No` by default; `Yes` adds a push button per screen that moves it to its stored 'my' position (only for screens that support it). Existing screens get the button on the next start; units that already exist are never duplicated. |
 | Debug logging | `Off` by default; `On` for verbose logs |
 
 

@@ -33,7 +33,7 @@ When upgrading to version 3.x, it is required to first remove all devices attach
 As of version 4.x the plugin supports local access to the Somfy box for both Tahoma and Connexoon. Additional installation steps mentioned below.
 
 ### Version 5.x
-The current plugin version is **5.4.7**. Version 5.x includes:
+The current plugin version is **5.4.8**. Version 5.x includes:
 
 - **Extended device support**  
   - Full venetian blinds: separate units for up/down and orientation.  

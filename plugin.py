@@ -376,7 +376,7 @@ class BasePlugin:
             Domoticz.Error(f"Connection failed during startup: {e}")
             self.connected = False
 
-        # --- DEVICES OPHALEN ---
+        # --- FETCH DEVICES ---
         try:
             filtered_devices = self.tahoma.get_devices()
         except exceptions.AuthenticationFailure:
@@ -421,7 +421,7 @@ class BasePlugin:
 
         self.create_devices(filtered_devices)
 
-        # --- GATEWAY INFO OPHALEN (alleen local) ---
+        # --- FETCH GATEWAY INFO (local mode only) ---
         if self.local:
             try:
                 gateways = self.tahoma.get_gateways()
@@ -718,6 +718,27 @@ class BasePlugin:
             else:
                 Domoticz.Error(f"Command {Command} not supported for unit 3")
                 return False
+        elif Unit == 4:
+            # "Discreet"/lowspeed unit: only created for devices whose gateway
+            # definition lists setPositionAndLinearSpeed (see create_devices()).
+            if Command in ("Off", "Close"):
+                commands["name"] = "setPositionAndLinearSpeed"
+                params.extend([100, "lowspeed"])
+                commands["parameters"] = params
+            elif Command in ("On", "Open"):
+                commands["name"] = "setPositionAndLinearSpeed"
+                params.extend([0, "lowspeed"])
+                commands["parameters"] = params
+            elif str(Command).strip().lower() == "stop":
+                commands["name"] = "stop"
+            elif "Set Level" in Command:
+                commands["name"] = "setPositionAndLinearSpeed"
+                tmp = max(100 - int(Level), 0)
+                params.extend([tmp, "lowspeed"])
+                commands["parameters"] = params
+            else:
+                Domoticz.Error(f"Command {Command!r} (Level={Level!r}) not supported for unit 4")
+                return False
         else:
             Domoticz.Error(f"Unit {Unit} not supported")
             return False
@@ -743,14 +764,14 @@ class BasePlugin:
                 self._ensure_web_login()
             except Exception as e:
                 self._login_fail_count += 1
-                Domoticz.Error(f"Login mislukt, commando wordt afgebroken: {e}")
+                Domoticz.Error(f"Login failed, aborting command: {e}")
                 if self._login_fail_count >= self._max_login_failures:
                     self._do_reconnect()
                 return False
 
             if not self.tahoma.logged_in:
                 self._login_fail_count += 1
-                Domoticz.Error("Login mislukt (geen exception), commando wordt afgebroken")
+                Domoticz.Error("Login failed (no exception raised), aborting command")
                 if self._login_fail_count >= self._max_login_failures:
                     self._do_reconnect()
                 return False
@@ -760,7 +781,7 @@ class BasePlugin:
             try:
                 self.tahoma.register_listener()
             except Exception as e:
-                Domoticz.Error(f"register_listener mislukt na login: {e}")
+                Domoticz.Error(f"register_listener failed after login: {e}")
                 return False
 
         # Send command
@@ -1032,6 +1053,13 @@ class BasePlugin:
                                 sValue = str(level)
                             UpdateDevice(dev, status_num, nValue, sValue)
 
+                            # Mirror the same position to unit 4 (the "discreet"/
+                            # lowspeed slider), since the gateway only reports a
+                            # single closure state and this loop would otherwise
+                            # only ever write it to unit 1.
+                            if status_num == 1 and 4 in Devices[dev].Units:
+                                UpdateDevice(dev, 4, nValue, sValue)
+
                 if lumstatus_l:
                     try:
                         int_lumlevel = float(Devices[dev].Units[1].sValue or 0)
@@ -1077,7 +1105,25 @@ class BasePlugin:
             logging.debug("create_devices: check if need to create device: "+device["label"])
 
             if device["deviceURL"] in Devices:
-                logging.debug("create_devices: device bestaat al, overslaan: " + device["label"])
+                logging.debug("create_devices: device already exists, checking for missing units: " + device["label"])
+                existing_units = Devices[device["deviceURL"]].Units
+
+                if 3 not in existing_units and self._device_supports_command(device, "my"):
+                    Domoticz.Unit(
+                        Name=device["label"] + " my",
+                        Unit=3, Type=244, Subtype=73, Switchtype=9,
+                        DeviceID=device["deviceURL"], Used=True
+                    ).Create()
+                    Domoticz.Log("Added missing 'my' unit 3 for existing device: " + device["label"])
+
+                if 4 not in existing_units and self._device_supports_command(device, "setPositionAndLinearSpeed"):
+                    Domoticz.Unit(
+                        Name=device["label"] + " discreet",
+                        Unit=4, Type=244, Subtype=73, Switchtype=21,
+                        DeviceID=device["deviceURL"], Used=True
+                    ).Create()
+                    Domoticz.Log("Added missing 'discreet' unit 4 for existing device: " + device["label"])
+
                 continue
 
             swtype = None
@@ -1114,6 +1160,9 @@ class BasePlugin:
                 Domoticz.Unit(Name=device["label"] + " orientation", Unit=2, Type=244, Subtype=73, Switchtype=swtype, DeviceID=device["deviceURL"], Used=used).Create()
             else:
                 Domoticz.Unit(Name=device["label"], Unit=1, Type=deviceType, Subtype=subtype2, Switchtype=swtype, DeviceID=device["deviceURL"], Used=used).Create()
+
+            if self._device_supports_command(device, "setPositionAndLinearSpeed"):
+                Domoticz.Unit(Name=device["label"] + " discreet", Unit=4, Type=244, Subtype=73, Switchtype=21, DeviceID=device["deviceURL"], Used=True).Create()
 
             logging.info("New device created: "+device["label"])
             Domoticz.Log("New device created: "+device["label"])
@@ -1358,7 +1407,7 @@ def UpdateDevice(Device, Unit, nValue, sValue, AlwaysUpdate=False):
                 try:
                     Devices[Device].Units[Unit].LastLevel = int(sValue)
                 except (ValueError, TypeError):
-                    pass  # sValue niet numeriek (bijv. "open"/"closed"), LastLevel overslaan
+                    pass  # sValue is not numeric (e.g. "open"/"closed"), skip LastLevel
                 Devices[Device].Units[Unit].Update()
                 Domoticz.Debug("Update " + str(nValue) + ":'" + str(sValue) + "' (" + Devices[Device].Units[Unit].Name + ")")
             except Exception as e:

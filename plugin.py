@@ -1104,60 +1104,58 @@ class BasePlugin:
 
             logging.debug("create_devices: check if need to create device: "+device["label"])
 
-            if device["deviceURL"] in Devices:
-                logging.debug("create_devices: device already exists, checking for missing units: " + device["label"])
-                existing_units = Devices[device["deviceURL"]].Units
+            url = device["deviceURL"]
+            label = device["label"]
+            ui_class = device["definition"]["uiClass"]
 
-                if 4 not in existing_units and self._device_supports_command(device, "setPositionAndLinearSpeed"):
-                    Domoticz.Unit(
-                        Name=device["label"] + " discreet",
-                        Unit=4, Type=244, Subtype=73, Switchtype=21,
-                        DeviceID=device["deviceURL"], Used=True
-                    ).Create()
-                    Domoticz.Log("Added missing 'discreet' unit 4 for existing device: " + device["label"])
-
-                continue
-
+            deviceType = 244
             swtype = None
-            logging.debug("create_devices: Must create new device: "+device["label"])
-
-            if device["deviceURL"].startswith("io://") or device["deviceURL"].startswith("rts://"):
-                deviceType = 244
+            subtype2 = 73
+            used = 1
+            if url.startswith("io://") or url.startswith("rts://"):
                 swtype = 13
-                subtype2 = 73
-                used = 1
-                if device["definition"]["uiClass"] == "Awning":
-                    swtype = 13
-                elif device["definition"]["uiClass"] in ("GarageDoor","Gate"):
-                    """ Garage Door and Gate are created as Inverted Door Lock """
+                if ui_class in ("GarageDoor", "Gate"):
+                    # Garage Door and Gate are created as Inverted Door Lock
                     swtype = 20
-                elif device["definition"]["uiClass"] == "RollerShutter":
-                    deviceType = 244
+                elif ui_class == "RollerShutter":
                     swtype = 21
-                    subtype2 = 73
-                elif device["definition"]["uiClass"] == "LightSensor":
+                elif ui_class == "LightSensor":
                     deviceType = 246
                     swtype = 12
                     subtype2 = 1
-            elif device["definition"]["uiClass"] == "Pod":
-                deviceType = 244
-                subtype2 = 73
+            elif ui_class == "Pod":
                 swtype = 9
                 used = 0
 
-            created_devices += 1
-            Domoticz.Device(DeviceID=device["deviceURL"])
-            if device["definition"]["uiClass"] in ("VenetianBlind", "ExteriorVenetianBlind"):
-                Domoticz.Unit(Name=device["label"] + " up/down", Unit=1, Type=deviceType, Subtype=subtype2, Switchtype=swtype, DeviceID=device["deviceURL"], Used=used).Create()
-                Domoticz.Unit(Name=device["label"] + " orientation", Unit=2, Type=244, Subtype=73, Switchtype=swtype, DeviceID=device["deviceURL"], Used=used).Create()
+            # unit number -> Domoticz.Unit kwargs; only units not yet present get created
+            wanted_units = {}
+            if ui_class in ("VenetianBlind", "ExteriorVenetianBlind"):
+                wanted_units[1] = dict(Name=label + " up/down", Type=deviceType, Subtype=subtype2, Switchtype=swtype, Used=used)
+                wanted_units[2] = dict(Name=label + " orientation", Type=244, Subtype=73, Switchtype=swtype, Used=used)
             else:
-                Domoticz.Unit(Name=device["label"], Unit=1, Type=deviceType, Subtype=subtype2, Switchtype=swtype, DeviceID=device["deviceURL"], Used=used).Create()
-
+                wanted_units[1] = dict(Name=label, Type=deviceType, Subtype=subtype2, Switchtype=swtype, Used=used)
             if self._device_supports_command(device, "setPositionAndLinearSpeed"):
-                Domoticz.Unit(Name=device["label"] + " discreet", Unit=4, Type=244, Subtype=73, Switchtype=21, DeviceID=device["deviceURL"], Used=True).Create()
+                wanted_units[4] = dict(Name=label + " discreet", Type=244, Subtype=73, Switchtype=21, Used=True)
 
-            logging.info("New device created: "+device["label"])
-            Domoticz.Log("New device created: "+device["label"])
+            is_new = url not in Devices
+            if is_new:
+                logging.debug("create_devices: Must create new device: " + label)
+                Domoticz.Device(DeviceID=url)
+                existing_units = {}
+                created_devices += 1
+            else:
+                existing_units = Devices[url].Units
+
+            for unit_nr, kwargs in wanted_units.items():
+                if unit_nr in existing_units:
+                    continue
+                Domoticz.Unit(Unit=unit_nr, DeviceID=url, **kwargs).Create()
+                if not is_new:
+                    Domoticz.Log("Added missing unit %d (%s) for existing device: %s" % (unit_nr, kwargs["Name"], label))
+
+            if is_new:
+                logging.info("New device created: " + label)
+                Domoticz.Log("New device created: " + label)
 
         logging.debug("create_devices: finished create devices")
         return len(filtered_devices), created_devices

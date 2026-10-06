@@ -1108,14 +1108,6 @@ class BasePlugin:
                 logging.debug("create_devices: device already exists, checking for missing units: " + device["label"])
                 existing_units = Devices[device["deviceURL"]].Units
 
-                if 3 not in existing_units and self._device_supports_command(device, "my"):
-                    Domoticz.Unit(
-                        Name=device["label"] + " my",
-                        Unit=3, Type=244, Subtype=73, Switchtype=9,
-                        DeviceID=device["deviceURL"], Used=True
-                    ).Create()
-                    Domoticz.Log("Added missing 'my' unit 3 for existing device: " + device["label"])
-
                 if 4 not in existing_units and self._device_supports_command(device, "setPositionAndLinearSpeed"):
                     Domoticz.Unit(
                         Name=device["label"] + " discreet",

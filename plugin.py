@@ -1115,9 +1115,6 @@ class BasePlugin:
             else:
                 Domoticz.Unit(Name=device["label"], Unit=1, Type=deviceType, Subtype=subtype2, Switchtype=swtype, DeviceID=device["deviceURL"], Used=used).Create()
 
-            if self._device_supports_command(device, "my"):
-                Domoticz.Unit(Name=device["label"] + " my", Unit=3, Type=244, Subtype=73, Switchtype=9, DeviceID=device["deviceURL"], Used=True).Create()
-
             logging.info("New device created: "+device["label"])
             Domoticz.Log("New device created: "+device["label"])
 

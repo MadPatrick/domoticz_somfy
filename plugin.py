@@ -7,10 +7,10 @@
 #
 ###################################################################################
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.4.7" externallink="https://github.com/MadPatrick/domoticz_somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.4.8" externallink="https://github.com/MadPatrick/domoticz_somfy">
     <description>
         <h2>Somfy TaHoma / Connexoon</h2>
-        <p><strong>Version:</strong> 5.4.7</p>
+        <p><strong>Version:</strong> 5.4.8</p>
         <p>Connects Domoticz to a Somfy TaHoma or Connexoon gateway through the local API or legacy web API.</p>
         <h3>Features</h3>
         <ul>
@@ -54,6 +54,16 @@
             <options>
                 <option label="No" value="false" default="true"/>
                 <option label="Yes" value="true" />
+            </options>
+        </param>
+        <param field="CreateMyDevice" label="Create 'my' devices" width="100px">
+            <description>
+                <h4 style="margin:14px 0 6px 0; border-top:1px solid #ccc; padding-top:8px;">Devices</h4>
+                Adds a push button per screen that moves it to its stored 'my' position.
+            </description>
+            <options>
+                <option label="No" value="false" default="true"/>
+                <option label="Yes" value="true"/>
             </options>
         </param>
         <param field="EnableDebug" type="boolean" label="Debug" default="false">
@@ -1134,6 +1144,8 @@ class BasePlugin:
                 wanted_units[2] = dict(Name=label + " orientation", Type=244, Subtype=73, Switchtype=swtype, Used=used)
             else:
                 wanted_units[1] = dict(Name=label, Type=deviceType, Subtype=subtype2, Switchtype=swtype, Used=used)
+            if self._create_my_devices() and self._device_supports_command(device, "my"):
+                wanted_units[3] = dict(Name=label + " my", Type=244, Subtype=73, Switchtype=9, Used=True)
             if self._device_supports_command(device, "setPositionAndLinearSpeed"):
                 wanted_units[4] = dict(Name=label + " discreet", Type=244, Subtype=73, Switchtype=21, Used=True)
 
@@ -1159,6 +1171,9 @@ class BasePlugin:
 
         logging.debug("create_devices: finished create devices")
         return len(filtered_devices), created_devices
+
+    def _create_my_devices(self):
+        return str(Parameters.get("CreateMyDevice", "false")).lower() == "true"
 
     def _device_supports_command(self, device, command_name):
         return any(command["commandName"] == command_name for command in device["definition"]["commands"])

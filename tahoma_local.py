@@ -61,7 +61,7 @@ class TahomaWebApi:
             response = requests.post(self.base_url_web + self.login_url, headers=self.headers_url, data=data, timeout=self.timeout)
         except requests.exceptions.RequestException as exp:
             logging.error("Login request failed: " + str(exp))
-            raise exceptions.LoginFailure("Network error during login: " + str(exp))
+            raise exceptions.LoginFailure("Network error during login: " + str(exp)) from exp
 
         Data = utils.response_json(response, "login")
         logging.debug("Login response: status_code: '"+str(response.status_code)+"' response body: '"+str(Data)+"'")
@@ -243,7 +243,7 @@ class SomfyBox(TahomaWebApi):
         except requests.exceptions.RequestException as exp:
             raise exceptions.TahomaException(
                 f"Failed to get devices: {exp}"
-            )
+            ) from exp
 
         if response.status_code == 200:
             data = utils.response_json(response, "get devices")
@@ -325,8 +325,7 @@ class SomfyBox(TahomaWebApi):
             except requests.exceptions.RequestException as exp:
                 logging.error("get_events RequestException: " + str(exp))
             time.sleep(min(2 * i, 5))
-        else:
-            raise exceptions.TooManyRetries
+        raise exceptions.TooManyRetries
         logging.debug("finished get events")
 
     def register_listener(self):
@@ -348,7 +347,7 @@ class SomfyBox(TahomaWebApi):
                 response = requests.post(self.base_url_local + "/exec/apply", headers=self.headers_with_token, json=json_data, verify=self.verify, timeout=self.timeout)
         except requests.exceptions.RequestException as exp:
             logging.error("Send command returns RequestException: " + str(exp))
-            raise exceptions.TahomaException("Network error while sending command: " + str(exp))
+            raise exceptions.TahomaException("Network error while sending command: " + str(exp)) from exp
         if response.status_code != 200:
             utils.handle_response(response, "send command")
         data = utils.response_json(response, "send command")

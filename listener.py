@@ -1,5 +1,4 @@
 import requests
-import exceptions
 import logging
 import datetime
 import json

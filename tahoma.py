@@ -106,7 +106,7 @@ class Tahoma:
         except requests.exceptions.RequestException as exp:
             Domoticz.Error("Login request failed: " + str(exp))
             logging.error("Login request failed: " + str(exp))
-            raise exceptions.LoginFailure("Network error during login: " + str(exp))
+            raise exceptions.LoginFailure("Network error during login: " + str(exp)) from exp
 
         Data = utils.response_json(response, "login")
         logging.debug(
@@ -264,8 +264,7 @@ class Tahoma:
             except requests.exceptions.RequestException as exp:
                 logging.error("get_events RequestException: " + str(exp))
             time.sleep(min(2 * i, 5))
-        else:
-            raise exceptions.TooManyRetries
+        raise exceptions.TooManyRetries
 
         logging.debug("finished get events")
         return []
@@ -319,7 +318,7 @@ class Tahoma:
             )
         except requests.exceptions.RequestException as exp:
             logging.error("Send command returns RequestException: " + str(exp))
-            raise exceptions.TahomaException("Network error while sending command: " + str(exp))
+            raise exceptions.TahomaException("Network error while sending command: " + str(exp)) from exp
 
         if response.status_code != 200:
             self.__logged_in = False

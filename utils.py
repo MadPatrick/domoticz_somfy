@@ -43,14 +43,13 @@ def has_state(device, state_name):
 def is_temperature_device(device):
     """Temperature-only devices: TemperatureSensor sub-devices, or io devices of an
     otherwise unsupported class (e.g. a remote) that report core:TemperatureState."""
+    if not device["deviceURL"].startswith("io://"):
+        return False
     ui_class = device["definition"]["uiClass"]
     if ui_class == "TemperatureSensor":
         return True
-    return (
-        ui_class not in _SUPPORTED_IO_CLASSES
-        and device["deviceURL"].startswith("io://")
-        and has_state(device, "core:TemperatureState")
-    )
+    return ui_class not in _SUPPORTED_IO_CLASSES and has_state(device, "core:TemperatureState")
+
 
 def filter_devices(Data):
     logging.debug("start filter devices")

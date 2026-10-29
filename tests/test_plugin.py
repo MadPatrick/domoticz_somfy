@@ -282,6 +282,94 @@ class PluginTests(unittest.TestCase):
         self.assertEqual(expected, tahoma._masked_headers(headers))
         self.assertEqual(expected, tahoma_local._masked_headers(headers))
 
+    def test_light_commands_send_on_and_off(self):
+        instance = plugin.BasePlugin()
+        instance.devices_ready = True
+        instance.local = True
+        sent = []
+        instance.tahoma = types.SimpleNamespace(send_command=sent.append)
+        device_id = "io://garage#2"
+        instance._light_devices.add(device_id)
+        devices = {device_id: FakeDevice(FakeUnit("Garage light"))}
+
+        with mock.patch.object(plugin, "Devices", devices, create=True):
+            self.assertTrue(instance._dispatch_command(device_id, 1, "On", 0, 0, None))
+            self.assertTrue(instance._dispatch_command(device_id, 1, "Off", 0, 0, None))
+
+        names = [data["actions"][0]["commands"][0]["name"] for data in sent]
+        self.assertEqual(["on", "off"], names)
+
+    def test_light_and_temperature_states_update_their_units(self):
+        instance = plugin.BasePlugin()
+        instance.local = False
+        instance.tahoma = types.SimpleNamespace(startup=False)
+        light = FakeUnit("Garage light", nvalue=0, svalue="Off")
+        temperature = FakeUnit("Remote temperature", nvalue=0, svalue="0")
+        devices = {
+            "io://garage#2": FakeDevice(light),
+            "io://remote#2": FakeDevice(temperature),
+        }
+        instance._light_devices.add("io://garage#2")
+        instance._temperature_devices.add("io://remote#2")
+        update = [
+            {
+                "deviceURL": "io://garage#2",
+                "name": "DeviceStateChangedEvent",
+                "deviceStates": [{"name": "core:OnOffState", "value": "on"}],
+            },
+            {
+                "deviceURL": "io://remote#2",
+                "name": "DeviceStateChangedEvent",
+                "deviceStates": [{"name": "core:TemperatureState", "value": 19.46}],
+            },
+        ]
+
+        with mock.patch.object(plugin, "Devices", devices, create=True):
+            instance.update_devices_status(update)
+
+        self.assertEqual((1, "On"), (light.nValue, light.sValue))
+        self.assertEqual((0, "19.5"), (temperature.nValue, temperature.sValue))
+
+    def test_temperature_state_is_ignored_for_covers(self):
+        instance = plugin.BasePlugin()
+        instance.local = False
+        instance.tahoma = types.SimpleNamespace(startup=False)
+        unit = FakeUnit("Shutter", nvalue=1, svalue="100")
+        devices = {"io://shutter": FakeDevice(unit)}
+        update = [{
+            "deviceURL": "io://shutter",
+            "name": "DeviceState",
+            "deviceStates": [{"name": "core:TemperatureState", "value": 21.0}],
+        }]
+
+        with mock.patch.object(plugin, "Devices", devices, create=True):
+            instance.update_devices_status(update)
+
+        self.assertEqual("100", unit.sValue)
+        self.assertEqual(0, unit.update_count)
+
+    def test_filter_devices_accepts_io_lights_and_temperature_sensors(self):
+        import utils
+
+        def device(url, ui_class, states=()):
+            return {
+                "deviceURL": url,
+                "label": url,
+                "definition": {"uiClass": ui_class, "states": [{"qualifiedName": s} for s in states]},
+            }
+
+        data = [
+            device("io://garage#2", "Light"),
+            device("rts://light", "Light"),
+            device("io://sensor#2", "TemperatureSensor"),
+            device("io://remote#1", "RemoteController", ["core:TemperatureState"]),
+            device("io://remote#3", "RemoteController"),
+        ]
+        urls = [d["deviceURL"] for d in utils.filter_devices(data)]
+        self.assertEqual(["io://garage#2", "io://sensor#2", "io://remote#1"], urls)
+        self.assertTrue(utils.is_temperature_device(data[3]))
+        self.assertFalse(utils.is_temperature_device(data[0]))
+
 
 if __name__ == "__main__":
     unittest.main()

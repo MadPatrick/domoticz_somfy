@@ -9,7 +9,9 @@ stateSet = {
     "core:DeploymentState",
     "core:OpenClosedPartialState",
     "core:OpenClosedPedestrianState",
-    "core:SlateOrientationState"
+    "core:SlateOrientationState",
+    "core:OnOffState",
+    "core:TemperatureState"
 }
 
 # Supported uiClasses for io:// and rts:// devices
@@ -24,8 +26,31 @@ _SUPPORTED_IO_CLASSES = {
     "Gate",
     "Window",
     "VenetianBlind",
-    "ExteriorVenetianBlind"
+    "ExteriorVenetianBlind",
+    "Light",
+    "TemperatureSensor"
 }
+
+
+def has_state(device, state_name):
+    """True when the device definition or its current states list state_name."""
+    definition_states = device.get("definition", {}).get("states", [])
+    if any(s.get("qualifiedName") == state_name for s in definition_states):
+        return True
+    return any(s.get("name") == state_name for s in device.get("states", []))
+
+
+def is_temperature_device(device):
+    """Temperature-only devices: TemperatureSensor sub-devices, or io devices of an
+    otherwise unsupported class (e.g. a remote) that report core:TemperatureState."""
+    ui_class = device["definition"]["uiClass"]
+    if ui_class == "TemperatureSensor":
+        return True
+    return (
+        ui_class not in _SUPPORTED_IO_CLASSES
+        and device["deviceURL"].startswith("io://")
+        and has_state(device, "core:TemperatureState")
+    )
 
 def filter_devices(Data):
     logging.debug("start filter devices")
@@ -43,9 +68,12 @@ def filter_devices(Data):
 
         is_io_or_rts = device_url.startswith("io://") or device_url.startswith("rts://")
         is_supported_io = ui_class in _SUPPORTED_IO_CLASSES and is_io_or_rts
+        if ui_class in ("Light", "TemperatureSensor") and not device_url.startswith("io://"):
+            # Only io lights/sensors report state; RTS lights are not supported
+            is_supported_io = False
         is_pod = ui_class == "Pod" and device_url.startswith("internal://")
 
-        if is_supported_io or is_pod:
+        if is_supported_io or is_pod or is_temperature_device(device):
             filtered_devices.append(device)
             logging.debug("supported device found: " + str(device))
         else:

@@ -1,5 +1,6 @@
 import logging
 import exceptions
+import DomoticzEx as Domoticz
 
 # States that trigger a Domoticz widget update
 stateSet = {
@@ -77,6 +78,14 @@ def filter_devices(Data):
             logging.debug("supported device found: " + str(device))
         else:
             logging.debug("unsupported device found: " + str(device))
+            # Shown in the Domoticz log with plugin debug on, to identify devices to support
+            Domoticz.Debug(
+                "Unsupported device: '{}' uiClass={} controllableName={} url={} states={}".format(
+                    device.get("label"), ui_class,
+                    device.get("controllableName"), device_url,
+                    [s.get("name") for s in device.get("states", [])],
+                )
+            )
 
     logging.debug("finished filter devices")
     return filtered_devices

@@ -1154,6 +1154,10 @@ class BasePlugin:
             url = device["deviceURL"]
             label = device["label"]
             ui_class = device["definition"]["uiClass"]
+            Domoticz.Debug("Device '{}' uiClass={} commands={}".format(
+                label, ui_class,
+                [command.get("commandName") for command in device["definition"].get("commands", [])]
+            ))
 
             deviceType = 244
             swtype = None

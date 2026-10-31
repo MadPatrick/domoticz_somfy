@@ -25,6 +25,7 @@ Supported devices:
 - Luminance sensor
 - Light integrated in io garage door drives (e.g. Moto io), as On/Off switch
 - io temperature sensors, including the sensor in remotes such as the Amy 1 io
+- Ventilation position for garage doors that support it (push button)
 - RTS devices (Open/Close only, no state feedback)
 
 ## ⚠️ Important Notes

@@ -116,6 +116,11 @@ class BasePlugin:
         # next onHeartbeat tick(s). Each entry: (DeviceId, Unit, Command, Level, Hue, first_seen_ts).
         self._pending_commands = []
 
+        # deviceURLs of io lights (garage door drive lights) and temperature
+        # sensors; filled by create_devices(), used to route commands/states.
+        self._light_devices = set()
+        self._temperature_devices = set()
+
         # Device / mode tracking
         self._last_mode = None
 
@@ -688,7 +693,15 @@ class BasePlugin:
         commands = {}
         params = []
 
-        if Unit == 1:
+        if Unit == 1 and DeviceId in self._light_devices:
+            if Command == "On":
+                commands["name"] = "on"
+            elif Command == "Off":
+                commands["name"] = "off"
+            else:
+                Domoticz.Error(f"Command {Command} not supported for light")
+                return False
+        elif Unit == 1:
             if Command in ("Off", "Close"):
                 commands["name"] = "close"
             elif Command in ("On", "Open"):
@@ -1028,6 +1041,22 @@ class BasePlugin:
                         lumlevel = state["value"]
                         lumstatus_l = True
 
+                    elif state["name"] == "core:OnOffState" and dev in self._light_devices:
+                        if state["value"] == "on":
+                            UpdateDevice(dev, 1, 1, "On")
+                        elif state["value"] == "off":
+                            UpdateDevice(dev, 1, 0, "Off")
+
+                    elif state["name"] == "core:TemperatureState" and dev in self._temperature_devices:
+                        try:
+                            temperature = round(float(state["value"]), 1)
+                        except (ValueError, TypeError):
+                            Domoticz.Error(
+                                "Invalid temperature value for {}: {}".format(dev, state["value"])
+                            )
+                            continue
+                        UpdateDevice(dev, 1, 0, str(temperature))
+
                     elif state["name"] in (
                         "core:OpenClosedState",
                         "core:OpenClosedPedestrianState",
@@ -1122,7 +1151,17 @@ class BasePlugin:
             swtype = None
             subtype2 = 73
             used = 1
-            if url.startswith("io://") or url.startswith("rts://"):
+            if utils.is_temperature_device(device):
+                # Temperature sensor (e.g. built into an Amy 1 io remote)
+                self._temperature_devices.add(url)
+                deviceType = 80
+                subtype2 = 5
+                swtype = 0
+            elif ui_class == "Light" and url.startswith("io://"):
+                # Light integrated in a garage door drive (e.g. Moto io): On/Off switch
+                self._light_devices.add(url)
+                swtype = 0
+            elif url.startswith("io://") or url.startswith("rts://"):
                 swtype = 13
                 if ui_class in ("GarageDoor", "Gate"):
                     # Garage Door and Gate are created as Inverted Door Lock

@@ -23,6 +23,8 @@ Supported devices:
 - Venetian blinds (positions + slats control)
 - Exterior Venetian blinds
 - Luminance sensor
+- Light integrated in io garage door drives (e.g. Moto io), as On/Off switch
+- io temperature sensors, including the sensor in remotes such as the Amy 1 io
 - RTS devices (Open/Close only, no state feedback)
 
 ## ⚠️ Important Notes
@@ -41,6 +43,7 @@ The current plugin version is **5.4.8**. Version 5.x includes:
   - Compatible position handling for roller shutters, screens and awnings.
   - Open/closed state updates for gates, garage doors and windows.
   - Luminance sensors supported.
+  - Garage door drive lights (On/Off) and io temperature sensors supported.
 
 - **Day/Night polling**  
   - Separate intervals for day and night, configurable via `config.txt` (`DAY_INTERVAL` / `NIGHT_INTERVAL`).  

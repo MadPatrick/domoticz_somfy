@@ -120,6 +120,8 @@ class BasePlugin:
         # sensors; filled by create_devices(), used to route commands/states.
         self._light_devices = set()
         self._temperature_devices = set()
+        # deviceURL -> goToAlias id of the ventilation ("partial") position
+        self._ventilation_aliases = {}
 
         # Device / mode tracking
         self._last_mode = None
@@ -762,6 +764,16 @@ class BasePlugin:
             else:
                 Domoticz.Error(f"Command {Command!r} (Level={Level!r}) not supported for unit 4")
                 return False
+        elif Unit == 5:
+            # Ventilation unit: only created for devices that report a
+            # "partial" alias in core:SupportedAliases (see create_devices()).
+            if "On" in Command and DeviceId in self._ventilation_aliases:
+                commands["name"] = "goToAlias"
+                params.append(self._ventilation_aliases[DeviceId])
+                commands["parameters"] = params
+            else:
+                Domoticz.Error(f"Command {Command} not supported for unit 5")
+                return False
         else:
             Domoticz.Error(f"Unit {Unit} not supported")
             return False
@@ -1146,6 +1158,11 @@ class BasePlugin:
             url = device["deviceURL"]
             label = device["label"]
             ui_class = device["definition"]["uiClass"]
+            Domoticz.Debug("Device '{}' uiClass={} commands={} aliases={}".format(
+                label, ui_class,
+                [command.get("commandName") for command in device["definition"].get("commands", [])],
+                [a.get("value") for a in device.get("attributes", []) if a.get("name") == "core:SupportedAliases"]
+            ))
 
             deviceType = 244
             swtype = None
@@ -1187,6 +1204,11 @@ class BasePlugin:
                 wanted_units[3] = dict(Name=label + " my", Type=244, Subtype=73, Switchtype=9, Used=True)
             if self._device_supports_command(device, "setPositionAndLinearSpeed"):
                 wanted_units[4] = dict(Name=label + " discreet", Type=244, Subtype=73, Switchtype=21, Used=True)
+            ventilation_alias = utils.partial_alias(device)
+            if ventilation_alias is not None and self._device_supports_command(device, "goToAlias"):
+                # Ventilation ("partial") position of garage doors (e.g. Moto io), as push button
+                self._ventilation_aliases[url] = ventilation_alias
+                wanted_units[5] = dict(Name=label + " ventilation", Type=244, Subtype=73, Switchtype=9, Used=True)
 
             is_new = url not in Devices
             if is_new:

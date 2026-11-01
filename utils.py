@@ -52,6 +52,19 @@ def is_temperature_device(device):
     return ui_class not in _SUPPORTED_IO_CLASSES and has_state(device, "core:TemperatureState")
 
 
+def partial_alias(device):
+    """Alias id of the device's "partial" (ventilation) position, from the
+    core:SupportedAliases attribute, or None when it has none."""
+    for attribute in device.get("attributes", []):
+        if attribute.get("name") != "core:SupportedAliases":
+            continue
+        for alias in attribute.get("value") or []:
+            if alias.get("type") == "partial" and alias.get("id") is not None:
+                alias_id = str(alias["id"])
+                return int(alias_id) if alias_id.isdigit() else alias_id
+    return None
+
+
 def filter_devices(Data):
     logging.debug("start filter devices")
 

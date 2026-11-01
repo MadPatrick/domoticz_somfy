@@ -370,13 +370,14 @@ class PluginTests(unittest.TestCase):
         self.assertTrue(utils.is_temperature_device(data[3]))
         self.assertFalse(utils.is_temperature_device(data[0]))
 
-    def test_ventilation_unit_sends_partial_position(self):
+    def test_ventilation_unit_sends_go_to_alias(self):
         instance = plugin.BasePlugin()
         instance.devices_ready = True
         instance.local = True
         sent = []
         instance.tahoma = types.SimpleNamespace(send_command=sent.append)
         device_id = "io://garage"
+        instance._ventilation_aliases[device_id] = 55305
         device = FakeDevice(FakeUnit("Garage"))
         device.Units[5] = FakeUnit("Garage ventilation")
 
@@ -384,7 +385,21 @@ class PluginTests(unittest.TestCase):
             self.assertTrue(instance._dispatch_command(device_id, 5, "On", 0, 0, None))
 
         command = sent[0]["actions"][0]["commands"][0]
-        self.assertEqual({"name": "partialPosition"}, command)
+        self.assertEqual({"name": "goToAlias", "parameters": [55305]}, command)
+
+    def test_partial_alias_is_read_from_supported_aliases(self):
+        import utils
+
+        device = {"attributes": [{
+            "name": "core:SupportedAliases",
+            "type": 10,
+            "value": [
+                {"id": "1", "type": "favorite1", "features": ["openClose"]},
+                {"id": "55305", "type": "partial", "features": ["openClose"]},
+            ],
+        }]}
+        self.assertEqual(55305, utils.partial_alias(device))
+        self.assertIsNone(utils.partial_alias({"attributes": []}))
 
 
 if __name__ == "__main__":

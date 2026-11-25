@@ -45,7 +45,7 @@ The current plugin version is **5.5.2**. Version 5.x includes:
   - Open/closed state updates for gates, garage doors and windows.
   - Luminance sensors supported.
   - Garage door drive lights (On/Off) and io temperature sensors supported.
-  - io signal strength shown on the existing device (no extra devices): as signal level 0-10 in the Devices list and as the real value ("Signaal: 82%") in the device description.
+  - io signal strength shown on the existing device (no extra devices): as signal level 0-10 in the Devices list and as the real value ("Signal: 82%") in the device description.
   - Devices the box reports as unavailable are marked as timed out (red) in Domoticz.
 
 - **Day/Night polling**  

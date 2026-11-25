@@ -1470,7 +1470,7 @@ def setConfigItem(Key=None, Value=None):
 def UpdateSignalLevel(Device, rssi):
     """Show the io signal strength (core:RSSILevelState) on every unit of the
     device: as SignalLevel (0-10, Domoticz shows 12+ as "-") and as the real
-    value in a "Signaal: NN%" line of the description. Only writes on change."""
+    value in a "Signal: NN%" line of the description. Only writes on change."""
     level = utils.rssi_to_signal_level(rssi)
     if level is None or Device not in Devices:
         return

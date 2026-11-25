@@ -27,14 +27,16 @@ _AVAILABILITY_EVENTS = {
 RELEVANT_EVENTS = ("DeviceStateChangedEvent",) + tuple(_AVAILABILITY_EVENTS)
 
 
-SIGNAL_PREFIX = "Signaal: "
+SIGNAL_PREFIX = "Signal: "
+# Prefixes of earlier versions, replaced by the current line
+_OLD_SIGNAL_PREFIXES = ("Signaal: ",)
 
 
 def description_with_signal(description, rssi):
-    """Return description with its "Signaal: NN%" line set to rssi, keeping
+    """Return description with its "Signal: NN%" line set to rssi, keeping
     any other text the user wrote."""
     lines = [line for line in (description or "").splitlines()
-             if not line.startswith(SIGNAL_PREFIX)]
+             if not line.startswith((SIGNAL_PREFIX,) + _OLD_SIGNAL_PREFIXES)]
     lines.append("{}{}%".format(SIGNAL_PREFIX, int(round(float(rssi)))))
     return "\n".join(lines)
 

@@ -22,11 +22,6 @@ class FailureWithErrorCode(TahomaException):
         self.message = "Failed to call Tahoma/Somfy API (return code = {})".format(code)
         super().__init__(self.message)
 
-class FailureWithoutErrorCode(TahomaException):
-    """Too many retries to call API"""
-    def __init__(self):
-        self.message = "Failed to call Tahoma/Somfy API (no return code )"
-        super().__init__(self.message)
 
 class LoginFailure(TahomaException):
     """failed to login to API"""
@@ -34,14 +29,10 @@ class LoginFailure(TahomaException):
         self.message = login_message
         super().__init__(self.message)
 
-class NoListenerFailure(TahomaException):
-    def __init__(self):
-        self.message = "Trying to fetch events without listener registered"
-        super().__init__(self.message)
 
 class AuthenticationFailure(TahomaException):
     """401 Unauthorized – token or credentials rejected by the local API."""
     def __init__(self, action=""):
         self.message = "Authentication failed" + (f" during {action}" if action else "")
         super().__init__(self.message)
-    
+    

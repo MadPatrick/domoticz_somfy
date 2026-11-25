@@ -5,7 +5,6 @@ import urllib.parse
 import datetime
 import time
 import utils
-import listener
 
 import DomoticzEx as Domoticz
 
@@ -26,22 +25,14 @@ class Tahoma:
         self.base_url = "https://tahomalink.com:443"
         self.login_url = "/enduser-mobile-web/enduserAPI/login"
         self.cookie = None
-        self.listenerId = None
         self.__logged_in = False
-        self.startup = True
-        self.devices = None
-        self.filtered_devices = None
-        self.events = None
-        self.heartbeat_delay = 1
-        self.con_delay = 0
-        self.wait_delay = 30
-        self.json_data = None
-        self.refresh = True
         self.timeout = 10
         self.__expiry_date = datetime.datetime.now()
-        self.logged_in_expiry = 90  # expiry time out in seconds
+        # Re-login interval in seconds. The cloud session lasts much longer
+        # than this; a 401 (handle_response/send_command) marks us logged out
+        # sooner, so this only forces a periodic fresh login.
+        self.logged_in_expiry = 24 * 3600
         self.execId = None
-        self.listener = listener.Listener(1)
         Domoticz.Log("TaHoma WEB client loaded")
 
     @property
@@ -54,40 +45,10 @@ class Tahoma:
         if self.__logged_in and (self.__expiry_date >= datetime.datetime.now()):
             return True
         elif self.__logged_in and (self.__expiry_date < datetime.datetime.now()):
-            # Session expired â€“ mark as logged out; caller (get_devices/get_events) must re-login
+            # Session expired â€“ mark as logged out; caller must log in again
             logging.debug("logged_in: session expired, marking as logged out")
             self.__logged_in = False
         return self.__logged_in
-
-    def get_login(self):
-        logging.debug("Asking tahoma server if we're good to go")
-        url = self.base_url + "/enduser-mobile-web/enduserAPI/authenticated"
-        Headers = {
-            'Host': self.srvaddr,
-            "Connection": "keep-alive",
-            "Accept-Encoding": "gzip, deflate",
-            "Accept": "*/*",
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Cookie": self.cookie
-        }
-        try:
-            response = requests.get(url, headers=Headers, timeout=self.timeout)
-        except requests.exceptions.ConnectionError as exp:
-            Domoticz.Error("Failed to contact server: " + str(exp))
-            logging.error("Failed to contact server: " + str(exp))
-            return False
-
-        if response.status_code != 200:
-            logging.error("get_login: error during get devices, status: " + str(response.status_code))
-            Domoticz.Error("get_login: error during get devices, status: " + str(response.status_code))
-            return False
-        Data = utils.response_json(response, "get login status")
-        logging.debug(
-            "get login status response: status '" + str(response.status_code) +
-            "' response body: '" + str(Data) + "'"
-        )
-
-        return Data['authenticated']
 
     def tahoma_login(self, username, password):
         url = self.base_url + self.login_url
@@ -130,7 +91,6 @@ class Tahoma:
             strData = Data["error"]
             self.__logged_in = False
             self.cookie = None
-            self.listener.valid = False
 
             if "Too many" in strData:
                 logging.error("Too many connections, must wait")
@@ -187,111 +147,7 @@ class Tahoma:
             raise exceptions.TooManyRetries
 
         filtered_list = utils.filter_devices(Data)
-        self.startup = False
         return filtered_list
-
-    def get_events(self):
-        logging.debug("start get events")
-
-        if not self.listener.valid:
-            raise exceptions.TahomaException("No listenerId has been provided")
-
-        if self.startup:
-            logging.debug("get_events: startup fase, geen events opgehaald")
-            return []
-
-        Headers = {
-            'Host': self.srvaddr,
-            "Connection": "keep-alive",
-            "Accept-Encoding": "gzip, deflate",
-            "Accept": "*/*",
-            "Content-Type": "application/json",
-            "Cookie": self.cookie
-        }
-        url = self.base_url + '/enduser-mobile-web/enduserAPI/events/' + self.listener.listenerId + '/fetch'
-
-        for i in range(1, 4):
-            try:
-                response = requests.post(url, headers=Headers, timeout=self.timeout)
-                logging.debug(
-                    "get events response: status '" + str(response.status_code) +
-                    "' response body: '" + str(response) + "'"
-                )
-                if response.status_code != 200:
-                    logging.error(
-                        "error during get events, status: " + str(response.status_code) +
-                        ", " + str(response.text)
-                    )
-                    self.__logged_in = False
-                    try:
-                        Data = utils.response_json(response, "get events")
-                    except exceptions.TahomaException:
-                        Data = {}
-                    if response.status_code in (400, 401) and "error" in Data:
-                        error_msg = Data["error"]
-                        if "No registered event listener" in error_msg or "authenticated" in error_msg:
-                            self.listener.valid = False
-                            logging.error("fetch events failed due to no valid listener registered")
-                            raise exceptions.NoListenerFailure()
-                    return []
-
-                elif response.status_code == 200 and self.logged_in:
-                    strData = utils.response_json(response, "get events")
-
-                    if "DeviceStateChangedEvent" not in response.text:
-                        logging.debug("get_events: no DeviceStateChangedEvent found in response: " + str(strData))
-                        return []
-
-                    self.events = strData
-                    self.listener.refresh_listener()
-
-                    if self.events:
-                        filtered_events = [
-                            event for event in self.events
-                            if event["name"] == "DeviceStateChangedEvent"
-                        ]
-                        for event in filtered_events:
-                            logging.debug(
-                                "get_events: add event: URL: '" + event["deviceURL"] +
-                                "' num states: '" + str(len(event["deviceStates"])) + "'"
-                            )
-                        return filtered_events
-
-                else:
-                    logging.info("Return status " + str(response.status_code))
-
-            except requests.exceptions.RequestException as exp:
-                logging.error("get_events RequestException: " + str(exp))
-            time.sleep(min(2 * i, 5))
-        raise exceptions.TooManyRetries
-
-        logging.debug("finished get events")
-        return []
-
-    def register_listener(self):
-        logging.debug("start register")
-        if not self.logged_in:
-            raise exceptions.TahomaException("Not logged in")
-        Headers = {
-            'Host': self.srvaddr,
-            "Connection": "keep-alive",
-            "Accept-Encoding": "gzip, deflate",
-            "Accept": "*/*",
-            "Content-Type": "application/json",
-            "Cookie": self.cookie
-        }
-        response = self.listener.register_listener(
-            self.base_url + '/enduser-mobile-web/enduserAPI/events/register',
-            headers=Headers,
-            verify=True,
-            timeout=self.timeout
-        )
-        if response.status_code == 200:
-            logging.debug("succeeded to get listener ID: " + str(utils.response_json(response, "register listener")))
-        else:
-            self.handle_response(response, "register listener")
-        self.refresh = False
-        return response
 
     def send_command(self, json_data):
         logging.debug("start command")

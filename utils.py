@@ -17,16 +17,6 @@ stateSet = {
     "core:StatusState"
 }
 
-# Device availability events; turned into a core:StatusState update
-_AVAILABILITY_EVENTS = {
-    "DeviceAvailableEvent": "available",
-    "DeviceUnavailableEvent": "unavailable",
-}
-
-# Event names the local client passes on to filter_events
-RELEVANT_EVENTS = ("DeviceStateChangedEvent",) + tuple(_AVAILABILITY_EVENTS)
-
-
 SIGNAL_PREFIX = "Signal: "
 # Prefixes of earlier versions, replaced by the current line
 _OLD_SIGNAL_PREFIXES = ("Signaal: ",)
@@ -87,6 +77,13 @@ def is_temperature_device(device):
     return ui_class not in _SUPPORTED_IO_CLASSES and has_state(device, "core:TemperatureState")
 
 
+def is_cycle_device(device):
+    """True for devices that only accept the sequential "cycle" command and
+    no open/close (e.g. rts:GarageDoor4TRTSComponent, issue #121)."""
+    commands = {c.get("commandName") for c in device.get("definition", {}).get("commands", [])}
+    return "cycle" in commands and not commands & {"open", "close"}
+
+
 def partial_alias(device):
     """Alias id of the device's "partial" (ventilation) position, from the
     core:SupportedAliases attribute, or None when it has none."""
@@ -137,36 +134,6 @@ def filter_devices(Data):
 
     logging.debug("finished filter devices")
     return filtered_devices
-
-
-def filter_events(Data):
-    """Filters relevant (DeviceStateChangedEvent / DeviceState) events out of an events list."""
-    logging.debug("start filter events")
-    filtered_events = []
-
-    for event in Data:
-        if event.get("name") in _AVAILABILITY_EVENTS and event.get("deviceURL"):
-            logging.debug("get_events: " + event["name"] + " for URL: '" + event["deviceURL"] + "'")
-            filtered_events.append({
-                "deviceURL":    event["deviceURL"],
-                "deviceStates": [{"name": "core:StatusState", "value": _AVAILABILITY_EVENTS[event["name"]]}],
-                "name":         "DeviceState",
-            })
-            continue
-        if event["name"] in ("DeviceStateChangedEvent", "DeviceState"):
-            logging.debug(
-                "get_events: add event: URL: '" + event["deviceURL"] +
-                "' num states: '" + str(len(event["deviceStates"])) + "'"
-            )
-            for event_state in event["deviceStates"]:
-                logging.debug(
-                    "   get_events: eventname: '" + event_state["name"] +
-                    "' with value: '" + str(event_state["value"]) + "'"
-                )
-            filtered_events.append(event)
-
-    logging.debug("finished filter events")
-    return filtered_events
 
 
 def filter_states(Data):

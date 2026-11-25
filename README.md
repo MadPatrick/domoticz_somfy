@@ -36,7 +36,7 @@ When upgrading to version 3.x, it is required to first remove all devices attach
 As of version 4.x the plugin supports local access to the Somfy box for both Tahoma and Connexoon. Additional installation steps mentioned below.
 
 ### Version 5.x
-The current plugin version is **5.5.1**. Version 5.x includes:
+The current plugin version is **5.5.2**. Version 5.x includes:
 
 - **Extended device support**  
   - Full venetian blinds: separate units for up/down and orientation.  
@@ -45,6 +45,8 @@ The current plugin version is **5.5.1**. Version 5.x includes:
   - Open/closed state updates for gates, garage doors and windows.
   - Luminance sensors supported.
   - Garage door drive lights (On/Off) and io temperature sensors supported.
+  - io signal strength shown on the existing device (no extra devices): as signal level 0-10 in the Devices list and as the real value ("Signaal: 82%") in the device description.
+  - Devices the box reports as unavailable are marked as timed out (red) in Domoticz.
 
 - **Day/Night polling**  
   - Separate intervals for day and night, configurable via `config.txt` (`DAY_INTERVAL` / `NIGHT_INTERVAL`).  

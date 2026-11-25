@@ -7,10 +7,10 @@
 #
 ###################################################################################
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.5.1" externallink="https://github.com/MadPatrick/domoticz_somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.5.2" externallink="https://github.com/MadPatrick/domoticz_somfy">
     <description>
         <h2>Somfy TaHoma / Connexoon</h2>
-        <p><strong>Version:</strong> 5.5.1</p>
+        <p><strong>Version:</strong> 5.5.2</p>
         <p>Connects Domoticz to a Somfy TaHoma or Connexoon gateway through the local API or legacy web API.</p>
         <h3>Features</h3>
         <ul>
@@ -1069,6 +1069,12 @@ class BasePlugin:
                             continue
                         UpdateDevice(dev, 1, 0, str(temperature))
 
+                    elif state["name"] == "core:RSSILevelState":
+                        UpdateSignalLevel(dev, state["value"])
+
+                    elif state["name"] == "core:StatusState":
+                        UpdateTimedOut(dev, state["value"])
+
                     elif state["name"] in (
                         "core:OpenClosedState",
                         "core:OpenClosedPedestrianState",
@@ -1460,6 +1466,48 @@ def setConfigItem(Key=None, Value=None):
     except Exception as inst:
         Domoticz.Error("Domoticz.Configuration operation failed: '"+str(inst)+"'")
     return Config
+
+def UpdateSignalLevel(Device, rssi):
+    """Show the io signal strength (core:RSSILevelState) on every unit of the
+    device: as SignalLevel (0-10, Domoticz shows 12+ as "-") and as the real
+    value in a "Signaal: NN%" line of the description. Only writes on change."""
+    level = utils.rssi_to_signal_level(rssi)
+    if level is None or Device not in Devices:
+        return
+    for unit in Devices[Device].Units.values():
+        description = utils.description_with_signal(unit.Description, rssi)
+        description_changed = description != (unit.Description or "")
+        if description_changed:
+            # UpdateProperties writes every property; reload first so a name or
+            # description edited in the Domoticz UI is not overwritten
+            unit.Refresh()
+            description = utils.description_with_signal(unit.Description, rssi)
+            description_changed = description != (unit.Description or "")
+        if unit.SignalLevel == level and not description_changed:
+            continue
+        unit.SignalLevel = level
+        unit.Description = description
+        try:
+            unit.Update(UpdateProperties=description_changed)
+            Domoticz.Debug("Signal level {} -> {} ({})".format(rssi, level, unit.Name))
+        except Exception as e:
+            Domoticz.Log("Signal level update failed: " + unit.Name + " - " + str(e))
+
+
+def UpdateTimedOut(Device, status):
+    """Mark the device as timed out (red in Domoticz) while the box reports it
+    unavailable (core:StatusState / DeviceUnavailableEvent)."""
+    if Device not in Devices or status not in ("available", "unavailable"):
+        return
+    timed_out = 1 if status == "unavailable" else 0
+    if Devices[Device].TimedOut != timed_out:
+        Devices[Device].TimedOut = timed_out
+        name = next(iter(Devices[Device].Units.values())).Name if Devices[Device].Units else Device
+        if timed_out:
+            Domoticz.Error("Device unavailable: " + name)
+        else:
+            Domoticz.Status("Device available again: " + name)
+
 
 def UpdateDevice(Device, Unit, nValue, sValue, AlwaysUpdate=False):
     if Device in Devices:

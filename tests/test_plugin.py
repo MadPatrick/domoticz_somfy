@@ -69,13 +69,8 @@ class FakeDevice:
 class FakeLocalClient:
     def __init__(self, devices=None):
         self.logged_in = False
-        self.startup = False
         self.token = None
         self._devices = devices or []
-        self.listener_registered = False
-
-    def register_listener(self):
-        self.listener_registered = True
 
     def get_devices(self):
         return self._devices
@@ -123,7 +118,6 @@ class PluginTests(unittest.TestCase):
 
         self.assertTrue(result)
         self.assertEqual("stored-token", instance.tahoma.token)
-        self.assertTrue(instance.tahoma.listener_registered)
         instance._refresh_local_token.assert_not_called()
 
     def test_on_start_completes_local_mode_with_stored_token(self):
@@ -229,7 +223,7 @@ class PluginTests(unittest.TestCase):
     def test_open_closed_state_updates_the_domoticz_unit(self):
         instance = plugin.BasePlugin()
         instance.local = False
-        instance.tahoma = types.SimpleNamespace(startup=False)
+        instance.tahoma = types.SimpleNamespace()
         unit = FakeUnit("Gate", nvalue=1, svalue="100")
         device_id = "io://gate"
         devices = {device_id: FakeDevice(unit)}
@@ -250,7 +244,7 @@ class PluginTests(unittest.TestCase):
     def test_zero_lux_replaces_the_previous_reading(self):
         instance = plugin.BasePlugin()
         instance.local = False
-        instance.tahoma = types.SimpleNamespace(startup=False)
+        instance.tahoma = types.SimpleNamespace()
         unit = FakeUnit("Light sensor", nvalue=3, svalue="25")
         device_id = "io://light"
         devices = {device_id: FakeDevice(unit)}
@@ -308,7 +302,7 @@ class PluginTests(unittest.TestCase):
     def test_light_and_temperature_states_update_their_units(self):
         instance = plugin.BasePlugin()
         instance.local = False
-        instance.tahoma = types.SimpleNamespace(startup=False)
+        instance.tahoma = types.SimpleNamespace()
         light = FakeUnit("Garage light", nvalue=0, svalue="Off")
         temperature = FakeUnit("Remote temperature", nvalue=0, svalue="0")
         devices = {
@@ -339,7 +333,7 @@ class PluginTests(unittest.TestCase):
     def test_temperature_state_is_ignored_for_covers(self):
         instance = plugin.BasePlugin()
         instance.local = False
-        instance.tahoma = types.SimpleNamespace(startup=False)
+        instance.tahoma = types.SimpleNamespace()
         unit = FakeUnit("Shutter", nvalue=1, svalue="100")
         devices = {"io://shutter": FakeDevice(unit)}
         update = [{
@@ -396,7 +390,7 @@ class PluginTests(unittest.TestCase):
     def test_state_for_missing_unit_does_not_break_the_update(self):
         instance = plugin.BasePlugin()
         instance.local = False
-        instance.tahoma = types.SimpleNamespace(startup=False)
+        instance.tahoma = types.SimpleNamespace()
         pergola = FakeUnit("Pergola", nvalue=0, svalue="0")
         screen = FakeUnit("Screen", nvalue=0, svalue="0")
         devices = {
@@ -428,7 +422,7 @@ class PluginTests(unittest.TestCase):
     def test_error_in_one_device_does_not_stop_the_others(self):
         instance = plugin.BasePlugin()
         instance.local = False
-        instance.tahoma = types.SimpleNamespace(startup=False)
+        instance.tahoma = types.SimpleNamespace()
         screen = FakeUnit("Screen", nvalue=0, svalue="0")
         devices = {"io://broken": FakeDevice(FakeUnit("Broken")), "io://screen": FakeDevice(screen)}
         update = [
@@ -544,6 +538,63 @@ class PluginTests(unittest.TestCase):
         self.assertEqual(2, len(sent))
         self.assertEqual(1, state["logins"])
 
+    def test_token_reset_runs_once_while_setting_stays_yes(self):
+        instance = plugin.BasePlugin()
+        config = {}
+        get = lambda key, default=None: config.get(key, default)
+        put = lambda key, value: config.__setitem__(key, value)
+        instance.tahoma = types.SimpleNamespace(
+            logged_in=True, token="t1",
+            generate_token=lambda pin: None, activate_token=lambda pin, token: None,
+        )
+
+        with mock.patch.object(plugin, "getConfigItem", side_effect=get), mock.patch.object(
+            plugin, "setConfigItem", side_effect=put
+        ):
+            with mock.patch.object(plugin, "Parameters", {"ResetToken": "true"}, create=True):
+                self.assertTrue(instance._token_reset_pending())
+                instance._refresh_local_token("1234-5678-9012")
+                self.assertFalse(instance._token_reset_pending())
+            with mock.patch.object(plugin, "Parameters", {"ResetToken": "false"}, create=True):
+                self.assertFalse(instance._token_reset_pending())
+            with mock.patch.object(plugin, "Parameters", {"ResetToken": "true"}, create=True):
+                # Setting it back to No and then Yes again allows a new reset
+                self.assertTrue(instance._token_reset_pending())
+
+    def test_failed_sun_refresh_is_retried_after_five_minutes(self):
+        instance = plugin.BasePlugin()
+        urlopen = mock.Mock(side_effect=OSError("connection refused"))
+
+        with mock.patch.object(plugin.urllib.request, "urlopen", urlopen):
+            instance.refresh_daily_data()
+            instance.refresh_daily_data()
+
+        self.assertEqual(1, urlopen.call_count)
+        self.assertIsNone(instance._sun_refreshed_today)
+        self.assertEqual("06:00", instance.last_sunrise)
+
+        instance._sun_retry_at = plugin.datetime.datetime.now() - plugin.datetime.timedelta(seconds=1)
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = b'{"Sunrise": "08:15:00", "Sunset": "16:35:00"}'
+        with mock.patch.object(plugin.urllib.request, "urlopen", return_value=response):
+            instance.refresh_daily_data()
+
+        self.assertEqual(("08:15", "16:35"), (instance.last_sunrise, instance.last_sunset))
+        self.assertIsNotNone(instance._sun_refreshed_today)
+
+    def test_missing_device_is_reported_once(self):
+        instance = plugin.BasePlugin()
+        update = [{"deviceURL": "io://deleted", "name": "DeviceState", "deviceStates": []}]
+
+        with mock.patch.object(plugin, "Devices", {}, create=True), mock.patch.object(
+            plugin.Domoticz, "Log"
+        ) as log, mock.patch.object(plugin.Domoticz, "Error") as error:
+            instance.update_devices_status(update)
+            instance.update_devices_status(update)
+
+        self.assertEqual(1, log.call_count)
+        error.assert_not_called()
+
     def test_partial_alias_is_read_from_supported_aliases(self):
         import utils
 
@@ -570,7 +621,7 @@ class PluginTests(unittest.TestCase):
     def test_rssi_state_sets_signal_level_on_all_units(self):
         instance = plugin.BasePlugin()
         instance.local = True
-        instance.tahoma = types.SimpleNamespace(startup=False)
+        instance.tahoma = types.SimpleNamespace()
         position = FakeUnit("Screen", nvalue=0, svalue="0")
         lowspeed = FakeUnit("Screen low speed", nvalue=0, svalue="0")
         device_id = "io://screen"
@@ -602,25 +653,25 @@ class PluginTests(unittest.TestCase):
         # The Dutch line from the first 5.5.2 build is replaced, not duplicated
         self.assertEqual("Signal: 82%", utils.description_with_signal("Signaal: 60%", 82))
 
-    def test_availability_events_toggle_timed_out(self):
+    def test_status_state_toggles_timed_out(self):
         instance = plugin.BasePlugin()
         instance.local = True
-        instance.tahoma = types.SimpleNamespace(startup=False)
         device_id = "io://screen"
         device = FakeDevice(FakeUnit("Screen"))
         devices = {device_id: device}
 
-        with mock.patch.object(plugin, "Devices", devices, create=True):
-            instance.update_devices_status([{"name": "DeviceUnavailableEvent", "deviceURL": device_id}])
-            self.assertEqual(1, device.TimedOut)
-            instance.update_devices_status([{"name": "DeviceAvailableEvent", "deviceURL": device_id}])
-            self.assertEqual(0, device.TimedOut)
-            instance.update_devices_status([{
+        def status(value):
+            return [{
                 "deviceURL": device_id,
                 "name": "DeviceState",
-                "deviceStates": [{"name": "core:StatusState", "value": "unavailable"}],
-            }])
+                "deviceStates": [{"name": "core:StatusState", "value": value}],
+            }]
+
+        with mock.patch.object(plugin, "Devices", devices, create=True):
+            instance.update_devices_status(status("unavailable"))
             self.assertEqual(1, device.TimedOut)
+            instance.update_devices_status(status("available"))
+            self.assertEqual(0, device.TimedOut)
 
     def test_startup_states_include_signal_and_status(self):
         import utils

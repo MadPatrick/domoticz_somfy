@@ -7,10 +7,10 @@
 #
 ###################################################################################
 """
-<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.5.2" externallink="https://github.com/MadPatrick/domoticz_somfy">
+<plugin key="tahomaIO" name="Somfy Tahoma or Connexoon plugin" author="MadPatrick" version="5.5.3" externallink="https://github.com/MadPatrick/domoticz_somfy">
     <description>
         <h2>Somfy TaHoma / Connexoon</h2>
-        <p><strong>Version:</strong> 5.5.2</p>
+        <p><strong>Version:</strong> 5.5.3</p>
         <p>Connects Domoticz to a Somfy TaHoma or Connexoon gateway through the local API or legacy web API.</p>
         <h3>Features</h3>
         <ul>
@@ -125,6 +125,8 @@ class BasePlugin:
         # True while the device list could not be fetched at startup; the
         # sets above are then empty and are filled on the first good poll.
         self._device_sync_pending = False
+        # deviceURLs reported by the box but missing in Domoticz (logged once)
+        self._missing_devices = set()
 
         # Device / mode tracking
         self._last_mode = None
@@ -134,6 +136,10 @@ class BasePlugin:
         self.last_sunset = None
         self.sun_refresh_time = "02:00"  # Fallback
         self.last_sun_refresh_ts = datetime.datetime.min
+        # After a failed sunrise/sunset fetch: when to try again, and whether
+        # the failure was already logged as an error
+        self._sun_retry_at = None
+        self._sun_error_logged = False
         self._last_logged_sunrise = None
         self._last_logged_sunset = None
         self.last_interval = None
@@ -351,14 +357,14 @@ class BasePlugin:
             Domoticz.Error("TaHoma not logged in")
             return False
 
-        # --- TOKEN / LISTENER ---
+        # --- TOKEN ---
         if self.local:
             logging.debug("check if token stored in configuration")
             confToken = getConfigItem('token', '0')
 
             if self.local_ip_mode:
                 # In Local IP mode the PIN is still available for token generation via web API.
-                if confToken in (None, "", "0") or self._reset_token_requested():
+                if confToken in (None, "", "0") or self._token_reset_pending():
                     if not self._valid_pin(pin):
                         Domoticz.Error(
                             "Local IP mode: no stored token and no valid Gateway PIN. "
@@ -374,7 +380,7 @@ class BasePlugin:
                     self.tahoma.token = confToken
                     Domoticz.Log("Token present (LocalIP mode), loaded from configuration")
             else:
-                if confToken in (None, "", "0") or self._reset_token_requested():
+                if confToken in (None, "", "0") or self._token_reset_pending():
                     if not self._valid_pin(pin):
                         Domoticz.Error(
                             "Local PIN mode: no stored token and no valid Gateway PIN. "
@@ -389,12 +395,6 @@ class BasePlugin:
                     logging.debug("found token in configuration")
                     self.tahoma.token = confToken
                     Domoticz.Log("Token present, loaded from configuration")
-
-        try:
-            self.tahoma.register_listener()
-        except Exception as e:
-            Domoticz.Error(f"Connection failed during startup: {e}")
-            self.connected = False
 
         # --- FETCH DEVICES ---
         try:
@@ -413,7 +413,6 @@ class BasePlugin:
                     try:
                         self._refresh_local_token(pin)
                         Domoticz.Log("Token refreshed (LocalIP mode)")
-                        self.tahoma.register_listener()
                         filtered_devices = self.tahoma.get_devices()
                     except Exception as retry_e:
                         Domoticz.Error("Failed to get devices after token regeneration: " + str(retry_e))
@@ -424,7 +423,6 @@ class BasePlugin:
                     try:
                         self._refresh_local_token(pin)
                         Domoticz.Log("Token refreshed")
-                        self.tahoma.register_listener()
                         filtered_devices = self.tahoma.get_devices()
                     except Exception as retry_e:
                         Domoticz.Error("Failed to get devices after token regeneration: " + str(retry_e))
@@ -486,6 +484,18 @@ class BasePlugin:
     def _reset_token_requested(self):
         return str(self._read_migrated_parameter("ResetToken", "Mode1", "false")).lower() == "true"
 
+    def _token_reset_pending(self):
+        """True when 'Reset local API token' is Yes and that reset was not done
+        yet. Domoticz keeps the setting on Yes until the user changes it, so
+        without this every start and reconnect would add another token to the
+        Somfy account. Setting it back to No re-arms the reset."""
+        done = str(getConfigItem('token_reset_done', 'false')).lower() == 'true'
+        if not self._reset_token_requested():
+            if done:
+                setConfigItem('token_reset_done', 'false')
+            return False
+        return not done
+
     def _ensure_web_login(self):
         if not self.tahoma.logged_in:
             self.tahoma.tahoma_login(
@@ -502,6 +512,12 @@ class BasePlugin:
         self.tahoma.activate_token(pin, self.tahoma.token)
         setConfigItem('token', self.tahoma.token)
         setConfigItem('token_created', datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
+        if self._reset_token_requested():
+            setConfigItem('token_reset_done', 'true')
+            Domoticz.Status(
+                "Local API token reset done. Set 'Reset local API token' back to No; "
+                "the new token is kept until then."
+            )
         return self.tahoma.token
 
     def _do_reconnect(self):
@@ -510,25 +526,22 @@ class BasePlugin:
             if self.local:
                 pin = self._read_gateway_pin()
                 confToken = getConfigItem('token', '0')
-                if confToken not in (None, "", "0") and not self._reset_token_requested():
+                if confToken not in (None, "", "0") and not self._token_reset_pending():
                     self.tahoma.token = confToken
                     Domoticz.Log("Reconnect using stored local API token")
                 else:
                     self._refresh_local_token(pin)
                     Domoticz.Log("Reconnect created a fresh local API token")
                 try:
-                    self.tahoma.register_listener()
                     self.tahoma.get_devices()
                 except exceptions.AuthenticationFailure:
                     # The stored token was revoked (e.g. removed in the Somfy
                     # account or after a box reset): create a new one.
                     Domoticz.Log("Stored local API token rejected (401), creating a new one")
                     self._refresh_local_token(pin)
-                    self.tahoma.register_listener()
                     self.tahoma.get_devices()
             else:
                 self._ensure_web_login()
-                self.tahoma.register_listener()
             Domoticz.Log("Reconnect successful.")
             self._login_fail_count = 0
             self.connected = True
@@ -578,6 +591,9 @@ class BasePlugin:
         if not first_refresh and not daily_refresh_needed:
             return
 
+        if self._sun_retry_at is not None and now < self._sun_retry_at:
+            return
+
         try:
             api_url = f"http://{self.domoticz_host}:{self.domoticz_port}/json.htm?type=command&param=getSunRiseSet"
             with urllib.request.urlopen(api_url, timeout=10) as response:
@@ -599,6 +615,8 @@ class BasePlugin:
                     second=0, microsecond=0
                 )
 
+            self._sun_retry_at = None
+            self._sun_error_logged = False
             Domoticz.Log(
                 f"Sunrise/sunset refreshed @ {now.strftime('%H:%M')}: "
                 f"sunrise={self.last_sunrise} sunset={self.last_sunset} | "
@@ -606,13 +624,21 @@ class BasePlugin:
             )
 
         except Exception as e:
-            Domoticz.Error(f"Sunrise/sunset couldn't be loaded: {e}")
+            # E.g. the Domoticz web server is not up yet right after a restart.
+            # Keep the previous (or default) times and try again in 5 minutes
+            # instead of using the defaults for the rest of the day.
+            if not self._sun_error_logged:
+                Domoticz.Error(f"Sunrise/sunset couldn't be loaded, retrying every 5 minutes: {e}")
+                self._sun_error_logged = True
+            else:
+                Domoticz.Debug(f"Sunrise/sunset still couldn't be loaded: {e}")
             if not self.last_sunrise:
                 self.last_sunrise = "06:00"
             if not self.last_sunset:
                 self.last_sunset = "22:00"
+            self._sun_retry_at = now + datetime.timedelta(minutes=5)
+            return
 
-        # Mark today as refreshed regardless of success/failure
         self._sun_refreshed_today = today
 
     def _day_night_times_str(self):
@@ -825,12 +851,6 @@ class BasePlugin:
 
             self._login_fail_count = 0
 
-            try:
-                self.tahoma.register_listener()
-            except Exception as e:
-                Domoticz.Error(f"register_listener failed after login: {e}")
-                return False
-
         # Send command
         try:
             try:
@@ -966,12 +986,6 @@ class BasePlugin:
 
                 if self.connected is False:
                     Domoticz.Log("Connection restored")
-                    if self.local:
-                        try:
-                            self.tahoma.register_listener()
-                            Domoticz.Log("Listener re-registered after connection restore")
-                        except Exception as e:
-                            Domoticz.Error(f"Failed to re-register listener: {e}")
 
                 self.connected = True
                 self._last_error = ""
@@ -1023,15 +1037,10 @@ class BasePlugin:
 
 
     def update_devices_status(self, Updated_devices):
-        Domoticz.Debug("updating device status self.tahoma.startup = "+str(self.tahoma.startup)+" on num datasets: "+str(len(Updated_devices)))
+        Domoticz.Debug("updating device status on num datasets: "+str(len(Updated_devices)))
         Domoticz.Debug("updating device status on data: "+str(Updated_devices))
-        if self.local:
-            eventList = utils.filter_events(Updated_devices)
-        else:
-            eventList = Updated_devices
         num_updates = 0
-        Domoticz.Debug("checking device updates for "+str(len(eventList))+" filtered events")
-        for dataset in eventList:
+        for dataset in Updated_devices:
             try:
                 num_updates += self._update_device_status(dataset)
             except Exception as e:
@@ -1047,8 +1056,12 @@ class BasePlugin:
         Domoticz.Debug("checking dataset: "+str(dataset))
 
         if dataset["deviceURL"] not in Devices:
-            Domoticz.Error("device not found for URL: "+str(dataset["deviceURL"]))
-            logging.error("device not found for URL: "+str(dataset["deviceURL"])+" while updating states")
+            # Usually a device deleted in Domoticz: report it once, not every poll.
+            # It is created again when the plugin restarts.
+            if dataset["deviceURL"] not in self._missing_devices:
+                self._missing_devices.add(dataset["deviceURL"])
+                Domoticz.Log("Device {} not found in Domoticz (deleted?), ignoring its updates "
+                             "until the plugin restarts".format(dataset["deviceURL"]))
             return 0
 
         if dataset["deviceURL"].startswith("io://"):

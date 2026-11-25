@@ -1,11 +1,8 @@
 import requests
 import logging
 import exceptions
-import urllib.parse
 import datetime
-import time
 import utils
-import listener
 import DomoticzEx as Domoticz
 
 import warnings
@@ -187,8 +184,6 @@ class SomfyBox(TahomaWebApi):
         self.headers_json = dict(self.headers_json)
         self.headers_with_token = {"Content-Type": "application/json"}
         self.base_url_local = "https://" + host + ":" + str(port) + "/enduser-mobile-web/1/enduserAPI"
-        self.startup = True
-        self.listener = listener.Listener(8)
         # False keeps the historical behavior of skipping certificate
         # verification (the TaHoma/Connexoon box uses a self-signed
         # certificate by default); a path string points at a CA bundle to
@@ -196,19 +191,6 @@ class SomfyBox(TahomaWebApi):
         self.verify = verify
         logging.debug("SomfyBox initialised")
         Domoticz.Log("TaHoma LOCAL client loaded")
-
-    def get_version(self):
-        if self.token is None or self.token == "0":
-            raise exceptions.TahomaException("No token has been provided")
-        with _suppress_insecure_warning():
-            response = requests.get(self.base_url_local + "/apiVersion", headers=self.headers_with_token, verify=self.verify, timeout=10)
-        if response.status_code == 200:
-            data = utils.response_json(response, "get API version")
-            logging.debug("succeeded to get API version: " + str(data))
-        else:
-            utils.handle_response(response, "get API version")
-            data = {}
-        return data
 
     #setup endpoints
     def get_gateways(self):
@@ -261,79 +243,9 @@ class SomfyBox(TahomaWebApi):
             data = []
 
         filtered_list = utils.filter_devices(data)
-        self.startup = False
 
         return filtered_list
 
-
-    def get_device_state(self, device):
-        if self.token is None or self.token == "0":
-            raise exceptions.TahomaException("No token has been provided")
-        if not device.startswith("io://"):
-            raise exceptions.TahomaException("Invalid url, needs to start with io://")
-        url = self.base_url_local + "/setup/devices/" + urllib.parse.quote(device, safe="") + "/states"
-        logging.debug("url for device state: " + str(url))
-        with _suppress_insecure_warning():
-            response = requests.get(url, headers=self.headers_with_token, verify=self.verify, timeout=10)
-        logging.debug(response)
-        if response.status_code == 200:
-            data = utils.response_json(response, "get device state")
-            logging.debug("succeeded to get local API device states: " + str(data))
-        else:
-            utils.handle_response(response, "get device state")
-            data = {}
-        return data
-        
-    #events endpoints
-    def get_events(self):
-        logging.debug("start get events")
-        if self.token is None or self.token == "0":
-            raise exceptions.TahomaException("No token has been provided")
-        if not self.listener.valid:
-            logging.error("cannot fetch events if no listener registered")
-            raise exceptions.NoListenerFailure()
-        for i in range(1, 4):
-            try:
-                with _suppress_insecure_warning():
-                    response = requests.post(self.base_url_local + "/events/" + self.listener.listenerId + "/fetch", headers=self.headers_with_token, verify=self.verify, timeout=10)
-                logging.debug("get events response: status '" + str(response.status_code) + "' response body: '" + str(response) + "'")
-                if response.status_code != 200:
-                    logging.error("error during get events, status: " + str(response.status_code) + ", " + str(response.text))
-                    try:
-                        data = utils.response_json(response, "get events")
-                    except exceptions.TahomaException:
-                        data = {}
-                    if response.status_code == 400 and "error" in data:
-                        if "No registered event listener" in data["error"]:
-                            self.listener.valid = False
-                            logging.error("fetch events failed due to no valid listener registered")
-                            raise exceptions.NoListenerFailure()
-                    return []
-                elif response.status_code == 200:
-                    strData = utils.response_json(response, "get events")
-                    self.listener.refresh_listener()
-                    logging.debug("succeeded to get local API events: " + str(strData))
-                    if not any(name in response.text for name in utils.RELEVANT_EVENTS):
-                        logging.debug("get_events: no relevant events found in response: " + str(strData))
-                        return []
-                    else:
-                        return strData
-
-                else:
-                    logging.info("Return status " + str(response.status_code))
-            except requests.exceptions.RequestException as exp:
-                logging.error("get_events RequestException: " + str(exp))
-            time.sleep(min(2 * i, 5))
-        raise exceptions.TooManyRetries
-        logging.debug("finished get events")
-
-    def register_listener(self):
-        logging.debug("start register")
-        if self.token is None or self.token == "0":
-            raise exceptions.TahomaException("No token has been provided")
-        with _suppress_insecure_warning():
-            response = self.listener.register_listener(self.base_url_local + "/events/register", headers=self.headers_with_token, verify=self.verify, timeout=10)
-        return response
 
     #execution endpoints
     def send_command(self, json_data):

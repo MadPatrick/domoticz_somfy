@@ -36,7 +36,7 @@ When upgrading to version 3.x, it is required to first remove all devices attach
 As of version 4.x the plugin supports local access to the Somfy box for both Tahoma and Connexoon. Additional installation steps mentioned below.
 
 ### Version 5.x
-The current plugin version is **5.5.2**. Version 5.x includes:
+The current plugin version is **5.5.3**. Version 5.x includes:
 
 - **Extended device support**  
   - Full venetian blinds: separate units for up/down and orientation.  
@@ -157,7 +157,7 @@ Add the hardware to your Domoticz system and fill in the required fields
 | Connection | **Web** – via Somfy web server; **Local PIN** – direct connection using Gateway PIN (DNS required); **Local IP** – direct connection using IP address (no DNS required) |
 | Gateway PIN | Gateway PIN of your Somfy box (e.g. `1234-1234-1234`). Used in local modes to generate/activate the local API token. |
 | Local IP Address | Only for **Local IP** mode: IP address of your Somfy box (e.g. `192.168.1.100`). Leave empty for Web or Local PIN mode. |
-| Reset token | `False` by default; set `True` if token errors occur |
+| Reset token | `False` by default; set `True` if token errors occur. The reset runs once; set it back to `False` afterwards (setting it to `True` again later starts a new reset) |
 | Portnumber | Default `8443` |
 | Create 'my' devices | `No` by default; `Yes` adds a push button per screen that moves it to its stored 'my' position (only for screens that support it). Existing screens get the button on the next start; units that already exist are never duplicated. |
 | Debug logging | `Off` by default; `On` for verbose logs |

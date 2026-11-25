@@ -65,7 +65,7 @@ class TahomaWebApi:
         Data = utils.response_json(response, "login")
         logging.debug("Login response: status_code: '"+str(response.status_code)+"' response body: '"+str(Data)+"'")
 
-        if (response.status_code == 200 and not self.__logged_in):
+        if response.status_code == 200:
             self.__logged_in = True
             self.__expiry_date = datetime.datetime.now() + datetime.timedelta(days=self.logged_in_expiry_days)
             logging.info("Tahoma authentication succeeded, login valid until " + self.__expiry_date.strftime("%Y-%m-%d %H:%M:%S"))

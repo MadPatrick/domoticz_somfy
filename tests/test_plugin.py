@@ -393,6 +393,157 @@ class PluginTests(unittest.TestCase):
         command = sent[0]["actions"][0]["commands"][0]
         self.assertEqual({"name": "goToAlias", "parameters": [55305]}, command)
 
+    def test_state_for_missing_unit_does_not_break_the_update(self):
+        instance = plugin.BasePlugin()
+        instance.local = False
+        instance.tahoma = types.SimpleNamespace(startup=False)
+        pergola = FakeUnit("Pergola", nvalue=0, svalue="0")
+        screen = FakeUnit("Screen", nvalue=0, svalue="0")
+        devices = {
+            "io://pergola": FakeDevice(pergola),
+            "io://screen": FakeDevice(screen),
+        }
+        update = [
+            {
+                "deviceURL": "io://pergola",
+                "name": "DeviceState",
+                "deviceStates": [
+                    {"name": "core:SlateOrientationState", "value": 40},
+                    {"name": "core:ClosureState", "value": 0},
+                ],
+            },
+            {
+                "deviceURL": "io://screen",
+                "name": "DeviceState",
+                "deviceStates": [{"name": "core:ClosureState", "value": 25}],
+            },
+        ]
+
+        with mock.patch.object(plugin, "Devices", devices, create=True):
+            self.assertEqual(2, instance.update_devices_status(update))
+
+        self.assertEqual("100", pergola.sValue)
+        self.assertEqual("75", screen.sValue)
+
+    def test_error_in_one_device_does_not_stop_the_others(self):
+        instance = plugin.BasePlugin()
+        instance.local = False
+        instance.tahoma = types.SimpleNamespace(startup=False)
+        screen = FakeUnit("Screen", nvalue=0, svalue="0")
+        devices = {"io://broken": FakeDevice(FakeUnit("Broken")), "io://screen": FakeDevice(screen)}
+        update = [
+            {"deviceURL": "io://broken", "name": "DeviceState", "deviceStates": None},
+            {
+                "deviceURL": "io://screen",
+                "name": "DeviceState",
+                "deviceStates": [{"name": "core:ClosureState", "value": 25}],
+            },
+        ]
+
+        with mock.patch.object(plugin, "Devices", devices, create=True):
+            self.assertEqual(1, instance.update_devices_status(update))
+
+        self.assertEqual("75", screen.sValue)
+
+    def test_device_sets_are_filled_on_first_poll_after_failed_startup(self):
+        instance = plugin.BasePlugin()
+        instance.enabled = True
+        instance.local = True
+        instance.connected = False
+        instance.last_config_day = plugin.datetime.datetime.now().day
+        instance.refresh_daily_data = mock.Mock()
+        instance.update_devices_status = mock.Mock()
+        instance.update_connection_device = mock.Mock()
+        instance.create_devices = mock.Mock()
+        instance._device_sync_pending = True
+        devices = [{"deviceURL": "io://garage#2"}]
+        instance.tahoma = FakeLocalClient(devices)
+        instance.runCounter = 0
+
+        instance.onHeartbeat()
+        instance.runCounter = 0
+        instance.onHeartbeat()
+
+        instance.create_devices.assert_called_once_with(devices)
+        self.assertFalse(instance._device_sync_pending)
+
+    def test_reconnect_creates_new_token_when_stored_one_is_rejected(self):
+        import exceptions
+
+        instance = plugin.BasePlugin()
+        instance.local = True
+        client = FakeLocalClient()
+        calls = []
+
+        def get_devices():
+            calls.append(client.token)
+            if client.token == "revoked":
+                raise exceptions.AuthenticationFailure("get devices")
+            return []
+
+        client.get_devices = get_devices
+        instance.tahoma = client
+
+        def refresh(pin):
+            client.token = "fresh"
+
+        instance._refresh_local_token = mock.Mock(side_effect=refresh)
+        parameters = {"Gateway": "1234-5678-9012", "ResetToken": "false"}
+
+        with mock.patch.object(plugin, "getConfigItem", return_value="revoked"), mock.patch.object(
+            plugin, "Parameters", parameters, create=True
+        ):
+            instance._do_reconnect()
+
+        instance._refresh_local_token.assert_called_once_with("1234-5678-9012")
+        self.assertEqual(["revoked", "fresh"], calls)
+        self.assertTrue(instance.connected)
+
+    def test_local_web_login_succeeds_again_after_session_expired(self):
+        box = tahoma_local.SomfyBox(ip="192.0.2.10")
+        response = types.SimpleNamespace(status_code=200, cookies={"c": "1"}, headers={}, json=lambda: {})
+
+        with mock.patch.object(tahoma_local.requests, "post", return_value=response, create=True):
+            self.assertTrue(box.tahoma_login("user", "pass"))
+            # Session expired while the logged-in flag is still set
+            box._TahomaWebApi__expiry_date = tahoma_local.datetime.datetime.now() - tahoma_local.datetime.timedelta(days=1)
+            self.assertFalse(box.logged_in)
+            self.assertTrue(box.tahoma_login("user", "pass"))
+        self.assertTrue(box.logged_in)
+
+    def test_web_command_is_retried_once_after_expired_session(self):
+        import exceptions
+
+        instance = plugin.BasePlugin()
+        instance.devices_ready = True
+        instance.local = False
+        state = {"logged_in": True, "logins": 0}
+        sent = []
+
+        def send_command(data):
+            sent.append(data)
+            if len(sent) == 1:
+                state["logged_in"] = False
+                raise exceptions.TahomaException("failed request during send command, check credentials: 401")
+
+        def login():
+            state["logins"] += 1
+            state["logged_in"] = True
+
+        class WebClient:
+            logged_in = property(lambda self: state["logged_in"])
+
+        instance.tahoma = WebClient()
+        instance.tahoma.send_command = send_command
+        instance._ensure_web_login = mock.Mock(side_effect=login)
+        devices = {"io://screen": FakeDevice(FakeUnit("Screen"))}
+
+        with mock.patch.object(plugin, "Devices", devices, create=True):
+            self.assertTrue(instance._dispatch_command("io://screen", 1, "Open", 0, 0, None))
+
+        self.assertEqual(2, len(sent))
+        self.assertEqual(1, state["logins"])
+
     def test_partial_alias_is_read_from_supported_aliases(self):
         import utils
 

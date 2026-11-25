@@ -39,7 +39,10 @@ class Tahoma:
         self.refresh = True
         self.timeout = 10
         self.__expiry_date = datetime.datetime.now()
-        self.logged_in_expiry = 90  # expiry time out in seconds
+        # Re-login interval in seconds. The cloud session lasts much longer
+        # than this; a 401 (handle_response/send_command) marks us logged out
+        # sooner, so this only forces a periodic fresh login.
+        self.logged_in_expiry = 24 * 3600
         self.execId = None
         self.listener = listener.Listener(1)
         Domoticz.Log("TaHoma WEB client loaded")

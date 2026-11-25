@@ -122,6 +122,9 @@ class BasePlugin:
         self._temperature_devices = set()
         # deviceURL -> goToAlias id of the ventilation ("partial") position
         self._ventilation_aliases = {}
+        # True while the device list could not be fetched at startup; the
+        # sets above are then empty and are filled on the first good poll.
+        self._device_sync_pending = False
 
         # Device / mode tracking
         self._last_mode = None
@@ -437,6 +440,7 @@ class BasePlugin:
             filtered_devices = []
 
         self.create_devices(filtered_devices)
+        self._device_sync_pending = not filtered_devices
 
         # --- FETCH GATEWAY INFO (local mode only) ---
         if self.local:
@@ -512,8 +516,16 @@ class BasePlugin:
                 else:
                     self._refresh_local_token(pin)
                     Domoticz.Log("Reconnect created a fresh local API token")
-                self.tahoma.register_listener()
-                self.tahoma.get_devices()
+                try:
+                    self.tahoma.register_listener()
+                    self.tahoma.get_devices()
+                except exceptions.AuthenticationFailure:
+                    # The stored token was revoked (e.g. removed in the Somfy
+                    # account or after a box reset): create a new one.
+                    Domoticz.Log("Stored local API token rejected (401), creating a new one")
+                    self._refresh_local_token(pin)
+                    self.tahoma.register_listener()
+                    self.tahoma.get_devices()
             else:
                 self._ensure_web_login()
                 self.tahoma.register_listener()
@@ -821,7 +833,17 @@ class BasePlugin:
 
         # Send command
         try:
-            self.tahoma.send_command(self.command_data)
+            try:
+                self.tahoma.send_command(self.command_data)
+            except exceptions.TahomaException:
+                # Web mode: the cloud session can expire before our own expiry
+                # time; send_command() then marks us logged out. Log in again
+                # and retry once instead of dropping the command.
+                if self.local or self.tahoma.logged_in:
+                    raise
+                Domoticz.Log("Web session expired, logging in again and retrying command")
+                self._ensure_web_login()
+                self.tahoma.send_command(self.command_data)
             self.temp_interval_end = time.time() + self.temp_time
             self.runCounter = 0
 
@@ -956,6 +978,14 @@ class BasePlugin:
                 self._last_connected_time = datetime.datetime.now()
                 self._login_fail_count = 0
 
+                if filtered_devices and self._device_sync_pending:
+                    # The box was unreachable at startup: register lights,
+                    # temperature sensors and ventilation aliases (and create
+                    # any missing devices) now that the list is available.
+                    Domoticz.Log("Device list received, syncing devices")
+                    self.create_devices(filtered_devices)
+                    self._device_sync_pending = False
+
                 if filtered_devices is not None:
                     self.update_devices_status(
                         utils.filter_states(filtered_devices)
@@ -1002,143 +1032,158 @@ class BasePlugin:
         num_updates = 0
         Domoticz.Debug("checking device updates for "+str(len(eventList))+" filtered events")
         for dataset in eventList:
-            Domoticz.Debug("checking dataset: "+str(dataset))
-
-            if dataset["deviceURL"] not in Devices:
-                Domoticz.Error("device not found for URL: "+str(dataset["deviceURL"]))
-                logging.error("device not found for URL: "+str(dataset["deviceURL"])+" while updating states")
-                continue
-
-            if dataset["deviceURL"].startswith("io://"):
-                dev = dataset["deviceURL"]
-                deviceClassTrig = dataset.get("deviceClass")
-                level = None
-                status_num = 0
-                nValue = 0
-                sValue = "0"
-
-                states = dataset["deviceStates"]
-                if not (dataset["name"] == "DeviceStateChangedEvent" or dataset["name"] == "DeviceState"):
-                    Domoticz.Debug("update_devices_status: dataset['name'] != DeviceStateChangedEvent: "+str(dataset["name"])+": breaking out")
-                    continue
-
-                lumstatus_l = False
-                lumlevel = 0
-
-                # A partially-open device reports OpenClosedState "open" next to
-                # its real position; the binary state must not overwrite it (an
-                # awning stopped at 25% would otherwise jump to 100%).
-                has_position = any(
-                    s.get("name") in ("core:ClosureState", "core:DeploymentState")
-                    for s in states
-                )
-
-                for state in states:
-                    level = None
-                    status_num = 0
-
-                    if state["name"] in ("core:ClosureState", "core:DeploymentState"):
-                        raw_level = max(0, min(int(state["value"]), 100))
-                        if deviceClassTrig == "Awning":
-                            level = raw_level
-                        else:
-                            level = 100 - raw_level
-                        status_num = 1
-
-                    elif state["name"] == "core:SlateOrientationState":
-                        level = int(state["value"])
-                        status_num = 2
-
-                    elif state["name"] == "core:LuminanceState":
-                        lumlevel = state["value"]
-                        lumstatus_l = True
-
-                    elif state["name"] == "core:OnOffState" and dev in self._light_devices:
-                        if state["value"] == "on":
-                            UpdateDevice(dev, 1, 1, "On")
-                        elif state["value"] == "off":
-                            UpdateDevice(dev, 1, 0, "Off")
-
-                    elif state["name"] == "core:TemperatureState" and dev in self._temperature_devices:
-                        try:
-                            temperature = round(float(state["value"]), 1)
-                        except (ValueError, TypeError):
-                            Domoticz.Error(
-                                "Invalid temperature value for {}: {}".format(dev, state["value"])
-                            )
-                            continue
-                        UpdateDevice(dev, 1, 0, str(temperature))
-
-                    elif state["name"] == "core:RSSILevelState":
-                        UpdateSignalLevel(dev, state["value"])
-
-                    elif state["name"] == "core:StatusState":
-                        UpdateTimedOut(dev, state["value"])
-
-                    elif state["name"] in (
-                        "core:OpenClosedState",
-                        "core:OpenClosedPedestrianState",
-                        "core:OpenClosedPartialState",
-                    ) and not has_position:
-                        if state["value"] == "closed":
-                            level = 0
-                        elif state["value"] == "open":
-                            level = 100
-                        status_num = 1
-
-                    Domoticz.Debug("checking for update on state[name]: '" + state["name"] + "' with status_num = '" + str(status_num) + "' for device: '" + dev + "'")
-
-                    if status_num > 0 and level is not None:
-                        if Devices[dev].Units[status_num].sValue:
-                            try:
-                                int_level = int(Devices[dev].Units[status_num].sValue)
-                            except (ValueError, TypeError):
-                                int_level = 0
-                        else:
-                            int_level = 0
-                        if level != int_level:
-                            Domoticz.Status("Updating device : " + Devices[dev].Units[status_num].Name)
-                            logging.info("Updating device : " + Devices[dev].Units[status_num].Name)
-                            if level == 0:
-                                nValue = 0
-                                sValue = "0"
-                            elif level == 100:
-                                nValue = 1
-                                sValue = "100"
-                            else:
-                                nValue = 2
-                                sValue = str(level)
-                            UpdateDevice(dev, status_num, nValue, sValue)
-
-                            # Mirror the same position to unit 4 (the "discreet"/
-                            # lowspeed slider), since the gateway only reports a
-                            # single closure state and this loop would otherwise
-                            # only ever write it to unit 1.
-                            if status_num == 1 and 4 in Devices[dev].Units:
-                                UpdateDevice(dev, 4, nValue, sValue)
-
-                if lumstatus_l:
-                    try:
-                        int_lumlevel = float(Devices[dev].Units[1].sValue or 0)
-                    except (ValueError, TypeError):
-                        int_lumlevel = 0
-                    try:
-                        new_lumlevel = float(lumlevel)
-                    except (ValueError, TypeError):
-                        Domoticz.Error(
-                            "Invalid luminance value for {}: {}".format(dev, lumlevel)
-                        )
-                        continue
-                    if new_lumlevel != int_lumlevel and new_lumlevel != 120000:
-                        Domoticz.Status("Updating device : " + Devices[dev].Units[1].Name)
-                        logging.info("Updating device : " + Devices[dev].Units[1].Name)
-                        nValue = 3
-                        sValue = str(lumlevel)
-                        UpdateDevice(dev, 1, nValue, sValue)
-
-                num_updates += 1
+            try:
+                num_updates += self._update_device_status(dataset)
+            except Exception as e:
+                # One unexpected state (e.g. a unit that does not exist for
+                # this device) must not stop the other devices from updating,
+                # nor be treated as a lost connection by onHeartbeat.
+                Domoticz.Error("Status update failed for {}: {!r}".format(dataset.get("deviceURL"), e))
 
         return num_updates
+
+    def _update_device_status(self, dataset):
+        """Apply the states of one device; returns 1 when it was processed."""
+        Domoticz.Debug("checking dataset: "+str(dataset))
+
+        if dataset["deviceURL"] not in Devices:
+            Domoticz.Error("device not found for URL: "+str(dataset["deviceURL"]))
+            logging.error("device not found for URL: "+str(dataset["deviceURL"])+" while updating states")
+            return 0
+
+        if dataset["deviceURL"].startswith("io://"):
+            dev = dataset["deviceURL"]
+            deviceClassTrig = dataset.get("deviceClass")
+            level = None
+            status_num = 0
+            nValue = 0
+            sValue = "0"
+
+            states = dataset["deviceStates"]
+            if not (dataset["name"] == "DeviceStateChangedEvent" or dataset["name"] == "DeviceState"):
+                Domoticz.Debug("update_devices_status: dataset['name'] != DeviceStateChangedEvent: "+str(dataset["name"])+": breaking out")
+                return 0
+
+            lumstatus_l = False
+            lumlevel = 0
+
+            # A partially-open device reports OpenClosedState "open" next to
+            # its real position; the binary state must not overwrite it (an
+            # awning stopped at 25% would otherwise jump to 100%).
+            has_position = any(
+                s.get("name") in ("core:ClosureState", "core:DeploymentState")
+                for s in states
+            )
+
+            for state in states:
+                level = None
+                status_num = 0
+
+                if state["name"] in ("core:ClosureState", "core:DeploymentState"):
+                    raw_level = max(0, min(int(state["value"]), 100))
+                    if deviceClassTrig == "Awning":
+                        level = raw_level
+                    else:
+                        level = 100 - raw_level
+                    status_num = 1
+
+                elif state["name"] == "core:SlateOrientationState":
+                    level = int(state["value"])
+                    status_num = 2
+
+                elif state["name"] == "core:LuminanceState":
+                    lumlevel = state["value"]
+                    lumstatus_l = True
+
+                elif state["name"] == "core:OnOffState" and dev in self._light_devices:
+                    if state["value"] == "on":
+                        UpdateDevice(dev, 1, 1, "On")
+                    elif state["value"] == "off":
+                        UpdateDevice(dev, 1, 0, "Off")
+
+                elif state["name"] == "core:TemperatureState" and dev in self._temperature_devices:
+                    try:
+                        temperature = round(float(state["value"]), 1)
+                    except (ValueError, TypeError):
+                        Domoticz.Error(
+                            "Invalid temperature value for {}: {}".format(dev, state["value"])
+                        )
+                        continue
+                    UpdateDevice(dev, 1, 0, str(temperature))
+
+                elif state["name"] == "core:RSSILevelState":
+                    UpdateSignalLevel(dev, state["value"])
+
+                elif state["name"] == "core:StatusState":
+                    UpdateTimedOut(dev, state["value"])
+
+                elif state["name"] in (
+                    "core:OpenClosedState",
+                    "core:OpenClosedPedestrianState",
+                    "core:OpenClosedPartialState",
+                ) and not has_position:
+                    if state["value"] == "closed":
+                        level = 0
+                    elif state["value"] == "open":
+                        level = 100
+                    status_num = 1
+
+                Domoticz.Debug("checking for update on state[name]: '" + state["name"] + "' with status_num = '" + str(status_num) + "' for device: '" + dev + "'")
+
+                if status_num > 0 and level is not None and status_num not in Devices[dev].Units:
+                    # e.g. a slat orientation from a device that only has unit 1,
+                    # or a unit the user deleted in Domoticz
+                    Domoticz.Debug("No unit {} for {}, skipping {}".format(status_num, dev, state["name"]))
+                elif status_num > 0 and level is not None:
+                    if Devices[dev].Units[status_num].sValue:
+                        try:
+                            int_level = int(Devices[dev].Units[status_num].sValue)
+                        except (ValueError, TypeError):
+                            int_level = 0
+                    else:
+                        int_level = 0
+                    if level != int_level:
+                        Domoticz.Status("Updating device : " + Devices[dev].Units[status_num].Name)
+                        logging.info("Updating device : " + Devices[dev].Units[status_num].Name)
+                        if level == 0:
+                            nValue = 0
+                            sValue = "0"
+                        elif level == 100:
+                            nValue = 1
+                            sValue = "100"
+                        else:
+                            nValue = 2
+                            sValue = str(level)
+                        UpdateDevice(dev, status_num, nValue, sValue)
+
+                        # Mirror the same position to unit 4 (the "discreet"/
+                        # lowspeed slider), since the gateway only reports a
+                        # single closure state and this loop would otherwise
+                        # only ever write it to unit 1.
+                        if status_num == 1 and 4 in Devices[dev].Units:
+                            UpdateDevice(dev, 4, nValue, sValue)
+
+            if lumstatus_l:
+                try:
+                    int_lumlevel = float(Devices[dev].Units[1].sValue or 0)
+                except (ValueError, TypeError):
+                    int_lumlevel = 0
+                try:
+                    new_lumlevel = float(lumlevel)
+                except (ValueError, TypeError):
+                    Domoticz.Error(
+                        "Invalid luminance value for {}: {}".format(dev, lumlevel)
+                    )
+                    return 0
+                if new_lumlevel != int_lumlevel and new_lumlevel != 120000:
+                    Domoticz.Status("Updating device : " + Devices[dev].Units[1].Name)
+                    logging.info("Updating device : " + Devices[dev].Units[1].Name)
+                    nValue = 3
+                    sValue = str(lumlevel)
+                    UpdateDevice(dev, 1, nValue, sValue)
+
+            return 1
+        return 0
 
     def onDeviceAdded(self, DeviceID, Unit):
         logging.debug("onDeviceAdded called for DeviceID {0} and Unit {1}".format(DeviceID, Unit))

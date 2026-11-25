@@ -87,6 +87,13 @@ def is_temperature_device(device):
     return ui_class not in _SUPPORTED_IO_CLASSES and has_state(device, "core:TemperatureState")
 
 
+def is_cycle_device(device):
+    """True for devices that only accept the sequential "cycle" command and
+    no open/close (e.g. rts:GarageDoor4TRTSComponent, issue #121)."""
+    commands = {c.get("commandName") for c in device.get("definition", {}).get("commands", [])}
+    return "cycle" in commands and not commands & {"open", "close"}
+
+
 def partial_alias(device):
     """Alias id of the device's "partial" (ventilation) position, from the
     core:SupportedAliases attribute, or None when it has none."""

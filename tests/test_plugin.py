@@ -393,6 +393,33 @@ class PluginTests(unittest.TestCase):
         command = sent[0]["actions"][0]["commands"][0]
         self.assertEqual({"name": "goToAlias", "parameters": [55305]}, command)
 
+    def test_cycle_device_sends_cycle_for_any_press(self):
+        instance = plugin.BasePlugin()
+        instance.devices_ready = True
+        instance.local = True
+        sent = []
+        instance.tahoma = types.SimpleNamespace(send_command=sent.append)
+        device_id = "rts://1234-5678/16719584"
+        instance._cycle_devices.add(device_id)
+        devices = {device_id: FakeDevice(FakeUnit("Garage"))}
+
+        with mock.patch.object(plugin, "Devices", devices, create=True):
+            for command in ("On", "Open", "Close"):
+                self.assertTrue(instance._dispatch_command(device_id, 1, command, 0, 0, None))
+
+        commands = [data["actions"][0]["commands"][0] for data in sent]
+        self.assertEqual([{"name": "cycle"}] * 3, commands)
+
+    def test_is_cycle_device_only_without_open_close(self):
+        import utils
+
+        def device(*commands):
+            return {"definition": {"commands": [{"commandName": c} for c in commands]}}
+
+        self.assertTrue(utils.is_cycle_device(device("cycle", "openConfiguration", "test")))
+        self.assertFalse(utils.is_cycle_device(device("cycle", "open", "close", "stop")))
+        self.assertFalse(utils.is_cycle_device(device("open", "close")))
+
     def test_partial_alias_is_read_from_supported_aliases(self):
         import utils
 

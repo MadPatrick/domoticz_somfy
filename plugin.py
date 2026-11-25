@@ -1069,6 +1069,12 @@ class BasePlugin:
                             continue
                         UpdateDevice(dev, 1, 0, str(temperature))
 
+                    elif state["name"] == "core:RSSILevelState":
+                        UpdateSignalLevel(dev, state["value"])
+
+                    elif state["name"] == "core:StatusState":
+                        UpdateTimedOut(dev, state["value"])
+
                     elif state["name"] in (
                         "core:OpenClosedState",
                         "core:OpenClosedPedestrianState",
@@ -1460,6 +1466,37 @@ def setConfigItem(Key=None, Value=None):
     except Exception as inst:
         Domoticz.Error("Domoticz.Configuration operation failed: '"+str(inst)+"'")
     return Config
+
+def UpdateSignalLevel(Device, rssi):
+    """Show the io signal strength (core:RSSILevelState) as SignalLevel on
+    every unit of the device; only writes when the level changes."""
+    level = utils.rssi_to_signal_level(rssi)
+    if level is None or Device not in Devices:
+        return
+    for unit in Devices[Device].Units.values():
+        if unit.SignalLevel != level:
+            unit.SignalLevel = level
+            try:
+                unit.Update()
+                Domoticz.Debug("Signal level {} -> {} ({})".format(rssi, level, unit.Name))
+            except Exception as e:
+                Domoticz.Log("Signal level update failed: " + unit.Name + " - " + str(e))
+
+
+def UpdateTimedOut(Device, status):
+    """Mark the device as timed out (red in Domoticz) while the box reports it
+    unavailable (core:StatusState / DeviceUnavailableEvent)."""
+    if Device not in Devices or status not in ("available", "unavailable"):
+        return
+    timed_out = 1 if status == "unavailable" else 0
+    if Devices[Device].TimedOut != timed_out:
+        Devices[Device].TimedOut = timed_out
+        name = next(iter(Devices[Device].Units.values())).Name if Devices[Device].Units else Device
+        if timed_out:
+            Domoticz.Error("Device unavailable: " + name)
+        else:
+            Domoticz.Status("Device available again: " + name)
+
 
 def UpdateDevice(Device, Unit, nValue, sValue, AlwaysUpdate=False):
     if Device in Devices:

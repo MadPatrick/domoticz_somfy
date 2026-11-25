@@ -12,8 +12,29 @@ stateSet = {
     "core:OpenClosedPedestrianState",
     "core:SlateOrientationState",
     "core:OnOffState",
-    "core:TemperatureState"
+    "core:TemperatureState",
+    "core:RSSILevelState",
+    "core:StatusState"
 }
+
+# Device availability events; turned into a core:StatusState update
+_AVAILABILITY_EVENTS = {
+    "DeviceAvailableEvent": "available",
+    "DeviceUnavailableEvent": "unavailable",
+}
+
+# Event names the local client passes on to filter_events
+RELEVANT_EVENTS = ("DeviceStateChangedEvent",) + tuple(_AVAILABILITY_EVENTS)
+
+
+def rssi_to_signal_level(value):
+    """Map core:RSSILevelState (0-100) to a Domoticz SignalLevel (0-10),
+    or None when the value is not numeric."""
+    try:
+        rssi = float(value)
+    except (ValueError, TypeError):
+        return None
+    return int(round(max(0.0, min(rssi, 100.0)) / 10))
 
 # Supported uiClasses for io:// and rts:// devices
 _SUPPORTED_IO_CLASSES = {
@@ -110,6 +131,14 @@ def filter_events(Data):
     filtered_events = []
 
     for event in Data:
+        if event.get("name") in _AVAILABILITY_EVENTS and event.get("deviceURL"):
+            logging.debug("get_events: " + event["name"] + " for URL: '" + event["deviceURL"] + "'")
+            filtered_events.append({
+                "deviceURL":    event["deviceURL"],
+                "deviceStates": [{"name": "core:StatusState", "value": _AVAILABILITY_EVENTS[event["name"]]}],
+                "name":         "DeviceState",
+            })
+            continue
         if event["name"] in ("DeviceStateChangedEvent", "DeviceState"):
             logging.debug(
                 "get_events: add event: URL: '" + event["deviceURL"] +

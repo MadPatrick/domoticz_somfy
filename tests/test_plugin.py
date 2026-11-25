@@ -49,6 +49,7 @@ class FakeUnit:
         self.nValue = nvalue
         self.sValue = svalue
         self.LastLevel = 0
+        self.SignalLevel = 12
         self.update_count = 0
 
     def Update(self):
@@ -58,6 +59,7 @@ class FakeUnit:
 class FakeDevice:
     def __init__(self, *units):
         self.Units = {index + 1: unit for index, unit in enumerate(units)}
+        self.TimedOut = 0
 
 
 class FakeLocalClient:
@@ -400,6 +402,76 @@ class PluginTests(unittest.TestCase):
         }]}
         self.assertEqual(55305, utils.partial_alias(device))
         self.assertIsNone(utils.partial_alias({"attributes": []}))
+
+    def test_rssi_is_mapped_to_signal_level(self):
+        import utils
+
+        self.assertEqual(9, utils.rssi_to_signal_level(88))
+        self.assertEqual(5, utils.rssi_to_signal_level(52))
+        self.assertEqual(10, utils.rssi_to_signal_level(130))
+        self.assertEqual(0, utils.rssi_to_signal_level(-5))
+        self.assertIsNone(utils.rssi_to_signal_level("n/a"))
+
+    def test_rssi_state_sets_signal_level_on_all_units(self):
+        instance = plugin.BasePlugin()
+        instance.local = True
+        instance.tahoma = types.SimpleNamespace(startup=False)
+        position = FakeUnit("Screen", nvalue=0, svalue="0")
+        lowspeed = FakeUnit("Screen low speed", nvalue=0, svalue="0")
+        device_id = "io://screen"
+        devices = {device_id: FakeDevice(position, lowspeed)}
+        update = [{
+            "deviceURL": device_id,
+            "deviceClass": "ExteriorScreen",
+            "name": "DeviceStateChangedEvent",
+            "deviceStates": [{"name": "core:RSSILevelState", "value": 52}],
+        }]
+
+        with mock.patch.object(plugin, "Devices", devices, create=True):
+            instance.update_devices_status(update)
+            instance.update_devices_status(update)
+
+        self.assertEqual(5, position.SignalLevel)
+        self.assertEqual(5, lowspeed.SignalLevel)
+        # The second, identical event does not write again
+        self.assertEqual(1, position.update_count)
+        self.assertEqual("0", position.sValue)
+
+    def test_availability_events_toggle_timed_out(self):
+        instance = plugin.BasePlugin()
+        instance.local = True
+        instance.tahoma = types.SimpleNamespace(startup=False)
+        device_id = "io://screen"
+        device = FakeDevice(FakeUnit("Screen"))
+        devices = {device_id: device}
+
+        with mock.patch.object(plugin, "Devices", devices, create=True):
+            instance.update_devices_status([{"name": "DeviceUnavailableEvent", "deviceURL": device_id}])
+            self.assertEqual(1, device.TimedOut)
+            instance.update_devices_status([{"name": "DeviceAvailableEvent", "deviceURL": device_id}])
+            self.assertEqual(0, device.TimedOut)
+            instance.update_devices_status([{
+                "deviceURL": device_id,
+                "name": "DeviceState",
+                "deviceStates": [{"name": "core:StatusState", "value": "unavailable"}],
+            }])
+            self.assertEqual(1, device.TimedOut)
+
+    def test_startup_states_include_signal_and_status(self):
+        import utils
+
+        states = utils.filter_states([{
+            "deviceURL": "io://screen",
+            "definition": {"uiClass": "ExteriorScreen"},
+            "states": [
+                {"name": "core:ClosureState", "value": 0},
+                {"name": "core:RSSILevelState", "value": 88},
+                {"name": "core:StatusState", "value": "available"},
+                {"name": "core:NameState", "value": "Erker_3"},
+            ],
+        }])
+        names = [s["name"] for s in states[0]["deviceStates"]]
+        self.assertEqual(["core:ClosureState", "core:RSSILevelState", "core:StatusState"], names)
 
 
 if __name__ == "__main__":

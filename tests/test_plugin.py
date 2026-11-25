@@ -50,9 +50,13 @@ class FakeUnit:
         self.sValue = svalue
         self.LastLevel = 0
         self.SignalLevel = 12
+        self.Description = ""
         self.update_count = 0
 
-    def Update(self):
+    def Refresh(self):
+        pass
+
+    def Update(self, **kwargs):
         self.update_count += 1
 
 
@@ -433,9 +437,17 @@ class PluginTests(unittest.TestCase):
 
         self.assertEqual(5, position.SignalLevel)
         self.assertEqual(5, lowspeed.SignalLevel)
+        self.assertEqual("Signaal: 52%", position.Description)
         # The second, identical event does not write again
         self.assertEqual(1, position.update_count)
         self.assertEqual("0", position.sValue)
+
+    def test_signal_line_keeps_the_users_description(self):
+        import utils
+
+        self.assertEqual("Woonkamer\nSignaal: 82%",
+                         utils.description_with_signal("Woonkamer\nSignaal: 60%", 82))
+        self.assertEqual("Signaal: 82%", utils.description_with_signal(None, 82))
 
     def test_availability_events_toggle_timed_out(self):
         instance = plugin.BasePlugin()

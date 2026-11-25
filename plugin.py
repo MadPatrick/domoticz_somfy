@@ -1468,19 +1468,30 @@ def setConfigItem(Key=None, Value=None):
     return Config
 
 def UpdateSignalLevel(Device, rssi):
-    """Show the io signal strength (core:RSSILevelState) as SignalLevel on
-    every unit of the device; only writes when the level changes."""
+    """Show the io signal strength (core:RSSILevelState) on every unit of the
+    device: as SignalLevel (0-10, Domoticz shows 12+ as "-") and as the real
+    value in a "Signaal: NN%" line of the description. Only writes on change."""
     level = utils.rssi_to_signal_level(rssi)
     if level is None or Device not in Devices:
         return
     for unit in Devices[Device].Units.values():
-        if unit.SignalLevel != level:
-            unit.SignalLevel = level
-            try:
-                unit.Update()
-                Domoticz.Debug("Signal level {} -> {} ({})".format(rssi, level, unit.Name))
-            except Exception as e:
-                Domoticz.Log("Signal level update failed: " + unit.Name + " - " + str(e))
+        description = utils.description_with_signal(unit.Description, rssi)
+        description_changed = description != (unit.Description or "")
+        if description_changed:
+            # UpdateProperties writes every property; reload first so a name or
+            # description edited in the Domoticz UI is not overwritten
+            unit.Refresh()
+            description = utils.description_with_signal(unit.Description, rssi)
+            description_changed = description != (unit.Description or "")
+        if unit.SignalLevel == level and not description_changed:
+            continue
+        unit.SignalLevel = level
+        unit.Description = description
+        try:
+            unit.Update(UpdateProperties=description_changed)
+            Domoticz.Debug("Signal level {} -> {} ({})".format(rssi, level, unit.Name))
+        except Exception as e:
+            Domoticz.Log("Signal level update failed: " + unit.Name + " - " + str(e))
 
 
 def UpdateTimedOut(Device, status):

@@ -27,6 +27,18 @@ _AVAILABILITY_EVENTS = {
 RELEVANT_EVENTS = ("DeviceStateChangedEvent",) + tuple(_AVAILABILITY_EVENTS)
 
 
+SIGNAL_PREFIX = "Signaal: "
+
+
+def description_with_signal(description, rssi):
+    """Return description with its "Signaal: NN%" line set to rssi, keeping
+    any other text the user wrote."""
+    lines = [line for line in (description or "").splitlines()
+             if not line.startswith(SIGNAL_PREFIX)]
+    lines.append("{}{}%".format(SIGNAL_PREFIX, int(round(float(rssi)))))
+    return "\n".join(lines)
+
+
 def rssi_to_signal_level(value):
     """Map core:RSSILevelState (0-100) to a Domoticz SignalLevel (0-10),
     or None when the value is not numeric."""

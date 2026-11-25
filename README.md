@@ -26,6 +26,7 @@ Supported devices:
 - Light integrated in io garage door drives (e.g. Moto io), as On/Off switch
 - io temperature sensors, including the sensor in remotes such as the Amy 1 io
 - Ventilation position for garage doors that support it (push button)
+- Sequential RTS garage door modules that only know `cycle` (e.g. `rts:GarageDoor4TRTSComponent`), as push button (open → stop → close → stop)
 - RTS devices (Open/Close only, no state feedback)
 
 ## ⚠️ Important Notes

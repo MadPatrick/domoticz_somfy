@@ -127,6 +127,9 @@ class BasePlugin:
         self._device_sync_pending = False
         # deviceURLs reported by the box but missing in Domoticz (logged once)
         self._missing_devices = set()
+        # deviceURLs of sequential devices that only accept "cycle" (e.g. RTS
+        # garage door module rts:GarageDoor4TRTSComponent): open/stop/close/stop
+        self._cycle_devices = set()
 
         # Device / mode tracking
         self._last_mode = None
@@ -741,6 +744,15 @@ class BasePlugin:
             else:
                 Domoticz.Error(f"Command {Command} not supported for light")
                 return False
+        elif Unit == 1 and DeviceId in self._cycle_devices:
+            # Sequential (4T) drives only know "cycle": each pulse steps
+            # open -> stop -> close -> stop. Any press of the button (or of an
+            # older Door Lock device created for it) sends one pulse.
+            if Command in ("On", "Off", "Open", "Close", "Stop"):
+                commands["name"] = "cycle"
+            else:
+                Domoticz.Error(f"Command {Command} not supported for cycle device")
+                return False
         elif Unit == 1:
             if Command in ("Off", "Close"):
                 commands["name"] = "close"
@@ -1242,6 +1254,11 @@ class BasePlugin:
                 # Light integrated in a garage door drive (e.g. Moto io): On/Off switch
                 self._light_devices.add(url)
                 swtype = 0
+            elif utils.is_cycle_device(device):
+                # Sequential drive that only accepts "cycle" (e.g. RTS garage
+                # door module rts:GarageDoor4TRTSComponent): push button
+                self._cycle_devices.add(url)
+                swtype = 9
             elif url.startswith("io://") or url.startswith("rts://"):
                 swtype = 13
                 if ui_class in ("GarageDoor", "Gate"):
